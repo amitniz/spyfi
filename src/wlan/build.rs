@@ -2,6 +2,7 @@ extern crate bindgen;
 extern crate cc;
 
 fn main(){
+    println!("cargo:rerun-if-changed=c_wlan/wlan_com.c");
     cc::Build::new().file("c_wlan/wlan_com.c").compile("c_wlan");
     
     let bindings = bindgen::Builder::default()
