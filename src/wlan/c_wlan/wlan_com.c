@@ -12,6 +12,7 @@
 #include "wlan_com.h"
 
 #define MONITOR_MODE 6
+#define MANAGED_MODE 2
 #define MAX_CHANNEL 18
 
 
@@ -23,6 +24,7 @@ int create_socket(){
 
 int c_get_channel(char *iface){
   //create socket
+  //TODO: make sure that works
   int skfd = create_socket();
   if(skfd < 0) return -1;
   struct iwreq wrq;
@@ -70,13 +72,15 @@ int c_toggle_monitor_mode(char *iface,bool state){
   //add the iface to the request
   strncpy(wrq.ifr_name,iface,IFNAMSIZ-1);
   //update the mode
-  wrq.u.mode = MONITOR_MODE;
+  if(state){
+    wrq.u.mode = MONITOR_MODE;
+  }else{
+    wrq.u.mode = MANAGED_MODE;
+  }
   int res = ioctl(skfd, SIOCSIWMODE, &wrq);
   close(skfd);
   return res;
 }
-
-
 
 
 

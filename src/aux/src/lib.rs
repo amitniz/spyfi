@@ -13,9 +13,10 @@ const MAX_CHANNEL: u8 = 18;
 */
 
 
-pub fn switch_to_monitor(iface: &str) {
+
+pub fn toggle_monitor_state(iface: &str,mode: bool) {
     wlan::toggle_power(&iface, false).unwrap();
-    wlan::toggle_monitor_mode(&iface, true).unwrap();
+    wlan::toggle_monitor_mode(&iface, mode).unwrap();
     wlan::toggle_power(&iface, true).unwrap()
 }
 
@@ -25,12 +26,16 @@ fn get_interface(iface: &str) -> Option<NetworkInterface>{
     interface.cloned()
 }
 
+
 pub fn list_interfaces(){
     println!("[+] Available Interfaces:");
     for iface in pnet_datalink::interfaces(){
         println!(" * {}",iface.name);
     }
 }
+
+
+
 
 pub fn iface_info(iface: &str)-> std::io::Result<()>{
     let iface = get_interface(iface)
@@ -39,7 +44,7 @@ pub fn iface_info(iface: &str)-> std::io::Result<()>{
     Ok(())    
 }
 
-pub fn list_networks_old(iface: &str){
+pub fn list_networks_old(iface: &str){ //TODO: remove
     //get interface
     let interfaces = pnet_datalink::interfaces();
     let interface = interfaces.into_iter().find(|i| i.name == iface).unwrap();

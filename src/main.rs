@@ -36,26 +36,29 @@ enum Mode {
 }
 
 
+
 fn main() {
     let args = Args::parse(); //parse arguments
-    
+
     // mode arg
     if let Some(mode) = args.mode{
         let iface = args.iface.as_ref().unwrap();
         match mode{
             Mode::Managed =>{
-                wlan::toggle_power(iface, false).unwrap();
+                aux::toggle_monitor_state(iface, false);
                 println!("{} switched to managed mode",iface);
             },
             Mode::Monitor =>{
-                wlan::toggle_power(iface, true).unwrap();
+                aux::toggle_monitor_state(iface, true);
                 println!("{} switched to monitor mode",iface);
             }
         }
     }
 
+
     // channel arg
     if let Some(channel) = args.channel{
+        //TODO: handle error propagation
         wlan::switch_channel(args.iface.as_ref().unwrap(), channel).unwrap();
         println!("switched to channel {}", channel);
     }
@@ -67,6 +70,7 @@ fn main() {
 
     //info arg
     if args.info {
+        //TODO: handle error propagation
        aux::iface_info(args.iface.as_ref().unwrap());
     }
 }
