@@ -133,6 +133,7 @@ pub fn list_networks(iface: &str) -> std::io::Result<()>{
     let mut ssids: HashSet<String> = Default::default();
     // get rx channel to the given interface
     let mut rx = get_recv_channel(iface)?; 
+    let mut last_print_lines = 1;
     while iface_channel <= MAX_CHANNEL{
         // set channel
         wlan::switch_channel(iface,iface_channel)?;
@@ -152,13 +153,25 @@ pub fn list_networks(iface: &str) -> std::io::Result<()>{
             if let Frame::Beacon(beacon) = pkt.unwrap() {
                 //println!("{:?}",&beacon);
                 if let Some(ssid) = beacon.station_info.ssid{
-                    if !ssids.contains(&format!("{} {}",ssid.clone(), iface_channel)){
-                        ssids.insert(format!("{} {}",ssid.clone(), iface_channel));
-                        println!("[+] ssid: {} [channel {} signal {}dBm]",ssid,iface_channel,signal);
-                    }
+                    ssids.insert(format!("[+] ssid: {} [channel {}]",ssid.clone(), iface_channel));
                 }
             }
         }
+        //pretty print
+        //hide cursor
+        println!("\x1b[25l");
+        //move up the cursor 
+        println!("\x1b[{}A",last_print_lines);
+        //print ssids
+        println!("\x1b[1;30;37mSSIDS:\x1b[0m");
+        println!("{:-<80}","");
+        for s in ssids.iter(){
+            println!("\x1b[2K\x1b[1;32m{}\x1b[0m",s);
+        }
+        println!("{:-<80}","");
+        //update line count
+        last_print_lines = ssids.len()+5;
+
         // channel sweeping
         iface_channel = modulos(iface_channel as i32,MAX_CHANNEL as i32) as u8 + 1;
     }
@@ -170,5 +183,10 @@ pub fn list_networks(iface: &str) -> std::io::Result<()>{
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test1(){
+        todo!()
+    }
 
 }
