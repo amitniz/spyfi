@@ -7,5 +7,8 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.1.13", features = ["derive"] }
-wlan = {path="../wlan"}
-aux = {path="../aux"}
+wlan = {path = "../wlan"}
+aux = {path = "../aux"}
+wpa = {path = "../wpa"}
+crypto = {path = "../crypto"}
+hex = "0.4.3"

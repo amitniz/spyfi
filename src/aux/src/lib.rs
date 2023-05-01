@@ -1,12 +1,3 @@
-#[warn(unused_variables)]
-use std::{collections::HashSet};
-use std::io::{Error,ErrorKind};
-use pnet_datalink::{self, Channel,DataLinkReceiver, Config, NetworkInterface};
-use libwifi::Frame;
-use wlan;
-
-const MAX_CHANNEL: u8 = 11;
-
 /* TODOS:
 *  - channel sweeping.
 *  - print ssids from different channels.
@@ -14,169 +5,133 @@ const MAX_CHANNEL: u8 = 11;
 *  - deauth.
 */
 
-
-// --------------------------------- Structs ----------------------------------
-
-//TODO: use in list networks
-struct Network{
-    station_addr: [u8;6],
-    ssid: String,
-    channel: u8,
-    strength: i8,
-}
-
-
 // ---------------------------- Aux Functions ---------------------------------
 
-
-fn modulos(a: i32,b: i32) -> i32{
+pub fn modulos(a: i32, b: i32) -> i32 {
     ((a % b) + b) % b
 }
 
-fn get_interface(iface: &str) -> Option<NetworkInterface>{
-    let interfaces = pnet_datalink::interfaces();
-    let interface = interfaces.iter().find(|i|i.name == iface);
-    interface.cloned()
-}
+pub mod screen{
+    use core::fmt;
+    use std::io::{self,Write};
 
-fn get_recv_channel(iface:&str) -> std::io::Result<Box<dyn DataLinkReceiver>>{
-    // get interface
-    let iface = get_interface(iface)
-        .ok_or(Error::last_os_error())?;
+    pub enum Style{
+        Normal,
+        Bold,
+        Italic,
+        Faint,
+        Underline,
+        SlowBlink,
+        RapidBlink,
+        Invert,
+        Strike,
+        PrimaryFont,
+        AlternativeFont,
+    }
 
-    // get a channel to the interface
-    let mut config = Config{
-        promiscuous: true,
-        read_timeout: Some(std::time::Duration::from_millis(50)),
-        ..Config::default()
-    };
-    let channel = pnet_datalink::channel(&iface,config)?;
-    if let Channel::Ethernet(_,mut rx) = channel{
-        Ok(rx) 
-    }else{
-        Err(Error::new(ErrorKind::Other,"unknown error"))
+    impl fmt::Display for Style{
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let code;
+            match self{
+                Normal=>{ code = 0; }
+                Bold =>{ code = 1; }
+                Faint =>{ code = 2; }
+                Italic =>{ code = 3; }
+                Underline =>{ code = 4; }
+                SlowBlink =>{ code = 5; }
+                RapidBlink =>{ code = 6; }
+                Invert =>{ code = 7; }
+                Strike =>{ code = 9; }
+                PrimaryFont =>{ code = 10; }
+                AlternativeFont =>{ code = 11; }
+            }
+            write!(f,"{code}")
+        }
+    }
+
+    pub enum Color{
+        Black ,
+        Red ,
+        Green ,
+        Yellow ,
+        Blue ,
+        Magenta ,
+        Cyan ,
+        White ,
+        BrightBlack ,
+        BrightRed ,
+        BrightGreen ,
+        BrightYellow ,
+        BrightBlue ,
+        BrightMagenta ,
+        BrightCyan ,
+        BrightWhite ,
+    }
+
+    impl fmt::Display for Color{
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let code;
+            match self{
+                Black =>{ code = 30; }
+                Red =>{ code = 31; }
+                Green =>{ code = 32; }
+                Yellow =>{ code = 33; }
+                Blue =>{ code = 34; }
+                Magenta =>{ code = 35; }
+                Cyan =>{ code = 36; }
+                White =>{ code = 37; }
+                BrightBlack =>{ code = 90; }
+                BrightRed =>{ code = 91; }
+                BrightGreen =>{ code = 92; }
+                BrightYellow =>{ code = 93; }
+                BrightBlue =>{ code = 94; }
+                BrightMagenta =>{ code = 95; }
+                BrightCyan =>{ code = 96; }
+                BrightWhite =>{ code = 97; }
+            }
+            write!(f,"{code}")
+        }
+    }
+    /// hides the cursor
+    pub fn hide_cursor(){
+        print!("\x1b[25l");
+        io::stdout().flush();
+    }
+
+    /// moves up the cursor N lines
+    pub fn move_up_cursor(n_lines:usize){
+        print!("\x1b[{n_lines}A");
+        io::stdout().flush();
     }
     
-}
-
-// ------------------------- Public Functions ---------------------------------
-
-pub fn toggle_monitor_state(iface: &str,mode: bool) -> std::io::Result<()> {
-    wlan::toggle_power(&iface, false)?;
-    wlan::toggle_monitor_mode(&iface, mode)?;
-    wlan::toggle_power(&iface, true)?;
-    Ok(())
-}
-
-
-pub fn list_interfaces(){
-    println!("[+] Available Interfaces:");
-    for iface in pnet_datalink::interfaces(){
-        println!(" * {}",iface.name);
-    }
-}
-
-//TODO: change to get_hs(iface: &str,ssid:&str,channel:u8) -> std::io::Result<vec<Network>>
-// and remove the while
-pub fn get_hs(iface:&str,ssid:&str) ->std::io::Result<()>{
-    let mut rx = get_recv_channel(iface)?;
-    let mut iface_channel:u8 = 4;
-    while iface_channel <= MAX_CHANNEL{
-        //set channel
-        wlan::switch_channel(iface,iface_channel)?;
-        for i in 0..10{
-            let mut frame;
-            match rx.next(){
-                Ok(data) =>{
-                    frame = data;
-                },
-                _ => {continue;} //timeout
-            }
-            let pkt = libwifi::parse_frame(&frame[36..]);
-            if pkt.is_err(){
-                continue; //TODO: what gets here
-            }
-            if let Frame::QosData(qos) = pkt.unwrap() {
-                let data = qos.data;
-                // make sure that is key 
-                let msg_type:u16 = ((data[6] as u16) << 8) | data[7] as u16;
-                if msg_type == 0x888e{ //Auth type
-                    println!("[EAPOL] data:\n{:02x?}",data);
+    /// returns a styled str
+    #[macro_export]
+    macro_rules! style {
+        ($s:expr, $a:ident) =>{
+            {
+                if type($a) != Color || type($a) != Style{
+                    compile_error!("style! can only get Color or Style as arguments");
                 }
+                format!("{}{}\x1b[0m",$s,$a)
             }
-
-        }
-        // channel sweeping
-        //iface_channel = modulos(iface_channel as i32,MAX_CHANNEL as i32) as u8 + 1;
-    }
-    Ok(())
-}
-
-pub fn iface_info(iface: &str)-> std::io::Result<()>{
-    let iface = get_interface(iface)
-        .ok_or(std::io::Error::last_os_error())?;
-    println!("{}",iface);
-    Ok(())    
-}
-
-
-pub fn list_clients(iface:&str, ssid: &str) -> std::io::Result<()>{
-    todo!();
-}
-
-
-//TODO: change to list_networks(iface: &str,channel:u8) -> std::io::Result<vec<Network>>
-// and remove the while
-pub fn list_networks(iface: &str) -> std::io::Result<()>{
-    // scan networks while channel sweeping
-    let mut iface_channel:u8  = 1;
-    let mut ssids: HashSet<String> = Default::default();
-    // get rx channel to the given interface
-    let mut rx = get_recv_channel(iface)?; 
-    let mut last_print_lines = 1;
-    while iface_channel <= MAX_CHANNEL{
-        // set channel
-        wlan::switch_channel(iface,iface_channel)?;
-        for i in 0..10{ //TODO: consider improving
-            let mut frame;
-            match rx.next(){
-                Ok(data) =>{
-                    frame = data;
-                },
-                _ => {continue;} //timeout
-            }
-            let signal = frame[30] as i8;
-            let pkt = libwifi::parse_frame(&frame[36..]);
-            if pkt.is_err(){
-                continue;
-            }
-            if let Frame::Beacon(beacon) = pkt.unwrap() {
-                //println!("{:?}",&beacon);
-                if let Some(ssid) = beacon.station_info.ssid{
-                    ssids.insert(format!("[+] ssid: {} [channel {}]",ssid.clone(), iface_channel));
+        };
+ 
+        ($text:literal, $color:item,$style:item,$($rest:ident),*) =>{
+            {
+                if type($color) != Color || type($color) != Style{
+                    compile_error!("style! can only get Color or Style as arguments");
                 }
-            }
-        }
-        //pretty print
-        //hide cursor
-        println!("\x1b[25l");
-        //move up the cursor 
-        println!("\x1b[{}A",last_print_lines);
-        //print ssids
-        println!("\x1b[1;30;37mSSIDS:\x1b[0m");
-        println!("{:-<80}","");
-        for s in ssids.iter(){
-            println!("\x1b[2K\x1b[1;32m{}\x1b[0m",s);
-        }
-        println!("{:-<80}","");
-        //update line count
-        last_print_lines = ssids.len()+5;
 
-        // channel sweeping
-        iface_channel = modulos(iface_channel as i32,MAX_CHANNEL as i32) as u8 + 1;
+                if type($style) != Style{
+                    compile_error!("style! can only get Style as not first arguments");
+                } 
+
+                format!("{style!($text,$(rest),*)}")
+            }
+        };
     }
-    Ok(())
 }
+
 
 // -------------------------------- Tests -------------------------------------
 
@@ -185,8 +140,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test1(){
-        todo!()
+    fn test1() {
+        println!(style!("text",Color:Red));
     }
-
 }

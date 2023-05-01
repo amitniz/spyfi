@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 ifstructs = "0.1.1"
+pnet_datalink = "0.33.0"
 
 [build-dependencies]
 bindgen = "0.63.0"
