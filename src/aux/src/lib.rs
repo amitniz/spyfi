@@ -33,17 +33,17 @@ pub mod screen{
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             let code;
             match self{
-                Normal=>{ code = 0; }
-                Bold =>{ code = 1; }
-                Faint =>{ code = 2; }
-                Italic =>{ code = 3; }
-                Underline =>{ code = 4; }
-                SlowBlink =>{ code = 5; }
-                RapidBlink =>{ code = 6; }
-                Invert =>{ code = 7; }
-                Strike =>{ code = 9; }
-                PrimaryFont =>{ code = 10; }
-                AlternativeFont =>{ code = 11; }
+                Style::Normal=>{ code = 0; }
+                Style::Bold =>{ code = 1; }
+                Style::Faint =>{ code = 2; }
+                Style::Italic =>{ code = 3; }
+                Style::Underline =>{ code = 4; }
+                Style::SlowBlink =>{ code = 5; }
+                Style::RapidBlink =>{ code = 6; }
+                Style::Invert =>{ code = 7; }
+                Style::Strike =>{ code = 9; }
+                Style::PrimaryFont =>{ code = 10; }
+                Style::AlternativeFont =>{ code = 11; }
             }
             write!(f,"{code}")
         }
@@ -72,22 +72,22 @@ pub mod screen{
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             let code;
             match self{
-                Black =>{ code = 30; }
-                Red =>{ code = 31; }
-                Green =>{ code = 32; }
-                Yellow =>{ code = 33; }
-                Blue =>{ code = 34; }
-                Magenta =>{ code = 35; }
-                Cyan =>{ code = 36; }
-                White =>{ code = 37; }
-                BrightBlack =>{ code = 90; }
-                BrightRed =>{ code = 91; }
-                BrightGreen =>{ code = 92; }
-                BrightYellow =>{ code = 93; }
-                BrightBlue =>{ code = 94; }
-                BrightMagenta =>{ code = 95; }
-                BrightCyan =>{ code = 96; }
-                BrightWhite =>{ code = 97; }
+                Color::Black =>{ code = 30; }
+                Color::Red =>{ code = 31; }
+                Color::Green =>{ code = 32; }
+                Color::Yellow =>{ code = 33; }
+                Color::Blue =>{ code = 34; }
+                Color::Magenta =>{ code = 35; }
+                Color::Cyan =>{ code = 36; }
+                Color::White =>{ code = 37; }
+                Color::BrightBlack =>{ code = 90; }
+                Color::BrightRed =>{ code = 91; }
+                Color::BrightGreen =>{ code = 92; }
+                Color::BrightYellow =>{ code = 93; }
+                Color::BrightBlue =>{ code = 94; }
+                Color::BrightMagenta =>{ code = 95; }
+                Color::BrightCyan =>{ code = 96; }
+                Color::BrightWhite =>{ code = 97; }
             }
             write!(f,"{code}")
         }
