@@ -1,3 +1,7 @@
+//! # aux
+//! `aux` is a collection of utilities to help performing certain
+//!  calculations and tasks more conveniently.
+
 /* TODOS:
 *  - channel sweeping.
 *  - print ssids from different channels.
@@ -7,6 +11,17 @@
 
 // ---------------------------- Aux Functions ---------------------------------
 
+/// Calculates modulo between two given numbers
+/// ## Description
+/// Modulo operation returns the reminder or signed reminder of a division,
+/// after one number is divided by another.
+/// ## Example
+/// **Basic usage:**
+/// ```
+///     let x = aux::modulos(12, 5);
+///     println!("12 mod 5 is: {}", x);
+///     assert_eq!(2, x);
+/// ```
 pub fn modulos(a: i32, b: i32) -> i32 {
     ((a % b) + b) % b
 }

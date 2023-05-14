@@ -1,3 +1,6 @@
+//! # wlan
+//! `wlan` provides the connection with the interface.
+//! It allows you to switch channels, modes and more.
 use std::ffi::CString;
 
 use pnet_datalink::{self, Channel, Config, DataLinkReceiver,DataLinkSender, NetworkInterface};
@@ -5,7 +8,9 @@ use std::io::{Error, ErrorKind};
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 
-
+/// Information on all interfaces 
+/// ## Description
+/// Presents a list of all the available interfaces.
 pub fn list_interfaces() {
     println!("[+] Available Interfaces:");
     for iface in pnet_datalink::interfaces() {
@@ -13,12 +18,18 @@ pub fn list_interfaces() {
     }
 }
 
+/// Information on the interface
+/// ## Description
+/// Presents information on a given interface.
 pub fn iface_info(iface: &str) -> std::io::Result<()> {
     let iface = get_interface(iface).ok_or(std::io::Error::last_os_error())?;
     println!("{}", iface);
     Ok(())
 }
 
+/// Finds TX channel
+/// ## Description
+/// Finds the channel that the interface listens on to send data.
 pub fn get_send_channel(iface: &str) -> std::io::Result<Box<dyn DataLinkSender>> {
 
     // get interface
@@ -39,7 +50,9 @@ pub fn get_send_channel(iface: &str) -> std::io::Result<Box<dyn DataLinkSender>>
     }
 }
 
-
+/// Finds RX channel
+/// ## Description
+/// Finds the channel that the interface listens on to receive data.
 pub fn get_recv_channel(iface: &str) -> std::io::Result<Box<dyn DataLinkReceiver>> {
     // get interface
     let iface = get_interface(iface).ok_or(Error::last_os_error())?;
@@ -59,6 +72,9 @@ pub fn get_recv_channel(iface: &str) -> std::io::Result<Box<dyn DataLinkReceiver
     }
 }
 
+/// Changes the channel of the interface
+/// ## Description
+/// Changes the channel that the interface listens to.
 pub fn switch_iface_channel(iface: &str, channel: u8) -> std::io::Result<()> {
     unsafe {
         let iface_cstr = CString::new(iface).unwrap();
@@ -73,6 +89,9 @@ pub fn switch_iface_channel(iface: &str, channel: u8) -> std::io::Result<()> {
 
 
 //TODO: the c code is broken
+/// Gets the channel of the interface
+/// ## Description
+/// Gets the channel that the interface listens to.
 pub fn get_iface_channel(iface: &str) -> std::io::Result<u8> {
     unsafe {
         let iface_cstr = CString::new(iface).unwrap();
@@ -85,6 +104,9 @@ pub fn get_iface_channel(iface: &str) -> std::io::Result<u8> {
     }
 }
 
+/// Controls the power of the interface
+/// ## Description
+/// Toggles the interface between the power on and off.
 pub fn toggle_power(iface: &str, state: bool) -> std::io::Result<()> {
     unsafe {
         let iface_cstr = CString::new(iface).unwrap();
@@ -96,6 +118,9 @@ pub fn toggle_power(iface: &str, state: bool) -> std::io::Result<()> {
     }
 }
 
+/// Changes the mode of the interface
+/// ## Description
+/// Switches the mode of the interface to monitor.
 pub fn toggle_monitor_mode(iface: &str, state: bool) -> std::io::Result<()> {
     unsafe {
         let iface_cstr = CString::new(iface).unwrap();
@@ -107,12 +132,18 @@ pub fn toggle_monitor_mode(iface: &str, state: bool) -> std::io::Result<()> {
     }
 }
 
+/// Gets the current interface
+/// ## Description
+/// Gets the current interface that the network uses.
 pub fn get_interface(iface: &str) -> Option<NetworkInterface> {
     let interfaces = pnet_datalink::interfaces();
     let interface = interfaces.iter().find(|i| i.name == iface);
     interface.cloned()
 }
 
+/// Changes the state of the interface
+/// ## Description
+/// Switches the mode of the interface to monitor or managed according to the arguments.
 pub fn toggle_monitor_state(iface: &str, mode: bool) -> std::io::Result<()> {
     toggle_power(&iface, false)?;
     toggle_monitor_mode(&iface, mode)?;

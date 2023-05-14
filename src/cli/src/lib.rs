@@ -1,3 +1,8 @@
+//! # cli
+//! `cli` is a command line tool to control SpyFi. It allows you to 
+//!  find nearest networks and perform actions such as disconnect them 
+//! from the WiFi.
+
 use clap::{Parser, ValueEnum};
 use wlan;
 use wpa;
@@ -8,6 +13,9 @@ use hex::encode;
 const MAX_CHANNEL: usize = 11;
 const PACKET_PER_CHANNEL: usize = 20; //num of packets to read per channel while sweeping
 
+/// contains the arguments of the CLI
+/// ## Description
+/// The struct contains the arguments of the CLI and description of the commands
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -58,6 +66,7 @@ struct Args {
     networks: bool,
 }
 
+/// Enum with all modes of the interface
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum Mode {
     ///managed mode
@@ -66,6 +75,24 @@ enum Mode {
     Monitor,
 }
 
+/// The function that runs the tool
+/// ## Description
+/// Run the program with the command `sudo ./spyfi` and the  
+/// arguments according to the desired action.
+/// ## Example
+/// **Basic usage:**
+/// - Command that presents networks the interface finds:
+/// 
+///     `sudo ./spyfi -i wlan0 --networks`
+/// - Command that changes the interface to Monitor mode:
+/// 
+///     `sudo ./spyfi -i wlan0 -mode Monitor`
+/// - Command that changes the channel of the interface to channel 5:
+/// 
+///     `sudo ./spyfi -i wlan0 -c 5`
+/// - Command that presents the list of the available interfaces:
+/// 
+///     `sudo ./spyfi -l`
 pub fn run() {
     let args = Args::parse(); //parse arguments
 
