@@ -188,15 +188,12 @@ pub fn get_hs_from_file(mut pcap: pcap::Capture<pcap::Offline>,ssid: &str, bssid
     }
 }
 
-// capture an handshake
-=======
 /// Capture a handshake
 /// ## Description
 /// Receives interface and captures packets until finding 4 EAPOL messages
 /// related to the same handshake process.
 /// 
 /// Returns a struct with the relevant data from the messages.
->>>>>>> refs/remotes/origin/dev
 pub fn get_hs(iface: &str,ssid: &str, bssid: &str) -> std::io::Result<Handshake> {
     // get recv channel to the interface
     let mut rx = wlan::get_recv_channel(iface)?;
