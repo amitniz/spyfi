@@ -1,3 +1,7 @@
+//! # wpa
+//! `wpa` contains functions of the tool that communicate with other devices. 
+//! It can capture packets from the 4-Way Handshake process and send 
+//! de-authentication to other BSSIDs.
 use std::io::Result;
 use itertools::Itertools;
 use libwifi::{Frame,Addresses};
@@ -33,6 +37,14 @@ const EAPOL_MSG_4: u16 = 0x30a;
 */
 // --------------------------------- Structs ----------------------------------
 
+/// contains information about a network
+/// ## Description
+/// The struct contains the relevant information about a network 
+/// as captured from the interface.
+/// * BSSID
+/// * SSID
+/// * Channel
+/// * Signal strength
 //TODO: use in list networks
 #[derive(Debug,Clone)]
 pub struct NetworkInfo {
@@ -43,7 +55,16 @@ pub struct NetworkInfo {
     signal_strength: i8,
 }
 
-
+/// contains the information captured from the handshake
+/// ## Description
+/// The struct contains the relevant information from the handshake
+/// packets in order to build the desired keys.
+/// * SSID
+/// * A Nonce
+/// * B Nonce
+/// * Station's MAC adrees
+/// * Client's MAC adrees
+/// * MIC
 #[derive(Debug,Clone)]
 pub struct Handshake{
     ssid: String,
@@ -104,18 +125,6 @@ const MAX_CHANNEL: u8 = 8;
 const PACKET_PER_CHANNEL: usize = 30;
 
 // --------------------------- Public Functions -------------------------------
-
-/* pub trait Next{
-    fn next(&mut self) -> Result<T,Error>;
-}
-
-
-impl<T> Next for pcap::Capture<T>{
-    fn next<T>(&mut self) -> Result<self,Error>{
-        self.next_packet()
-    }
-}
-*/
 
 // capture an handshake
 pub fn get_hs_from_file(mut pcap: pcap::Capture<pcap::Offline>,ssid: &str, bssid: &str) -> std::io::Result<Handshake> {
@@ -180,6 +189,14 @@ pub fn get_hs_from_file(mut pcap: pcap::Capture<pcap::Offline>,ssid: &str, bssid
 }
 
 // capture an handshake
+=======
+/// Capture a handshake
+/// ## Description
+/// Receives interface and captures packets until finding 4 EAPOL messages
+/// related to the same handshake process.
+/// 
+/// Returns a struct with the relevant data from the messages.
+>>>>>>> refs/remotes/origin/dev
 pub fn get_hs(iface: &str,ssid: &str, bssid: &str) -> std::io::Result<Handshake> {
     // get recv channel to the interface
     let mut rx = wlan::get_recv_channel(iface)?;
@@ -243,8 +260,11 @@ pub fn get_hs(iface: &str,ssid: &str, bssid: &str) -> std::io::Result<Handshake>
     }
 }
 
-/// sends deauth to a client from a given bssid.
+/// Send de-auth to a client from a given BSSID
 /// if target is None, the deauth will be sent to broadcast
+/// ## Description
+/// The interface sends De-authentication packet to a given 
+/// BSSID or broadcast it to all accessible networks.
 pub fn send_deauth(iface: &str, bssid: &str, target: Option<String>) -> std::io::Result<()>{
     // get a sender channel to the iface
     let mut tx = wlan::get_send_channel(iface)?;
@@ -263,7 +283,11 @@ pub fn send_deauth(iface: &str, bssid: &str, target: Option<String>) -> std::io:
 }
 
 
-/// ## description: scan networks while channel sweeping
+/// Scan networks on a given channel
+/// ## Description
+/// The interface scans networks on a given channel and returns a list of 
+/// all available networks.
+/// It uses beacon packets in order to find the networks.
 pub fn list_channel_networks(iface: &str,channel:u8, max_packets: usize) -> Result<Vec<NetworkInfo>> {
 
     let mut networks:Vec<NetworkInfo> = vec![];
