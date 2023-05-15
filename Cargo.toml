@@ -16,3 +16,4 @@ aux = {path="src/aux"}
 cli = {path = "src/cli"}
 tui = {path = "src/tui"}
 crypto = {path = "src/crypto"}
+hmac = "0.12.1"

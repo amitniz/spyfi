@@ -6,7 +6,10 @@ use core::fmt;
 use std::io::{self,Write};
 use pnet_datalink;
 use hex::{FromHex};
+use aux;
+use pcap;
 use wlan;
+use crypto;
 
 
 //PACKET PARSING POSITIONS
@@ -49,6 +52,7 @@ pub struct Handshake{
     station_mac: [u8; 6],
     client_mac: [u8; 6],
     mic: [u8; 16],
+    mic_msg: [u8;121], //the msg for calculating the mic
 }
 
 // --------------------------- Traits & methods -------------------------------
@@ -63,15 +67,30 @@ impl Handshake{
             station_mac: hs_pkts[0].as_ref().unwrap().header.bssid().unwrap().0, //TODO: make sure that is
                                                                      //safe
             client_mac: hs_pkts[0].as_ref().unwrap().header.address_1.0,
-            mic: hs_pkts[1].as_ref().unwrap().data[EAPOL_MIC_OFFSET..EAPOL_MIC_OFFSET+16].try_into().unwrap()
+            mic: hs_pkts[1].as_ref().unwrap().data[EAPOL_MIC_OFFSET..EAPOL_MIC_OFFSET+16].try_into().unwrap(),
+            mic_msg: crypto::mic_data(hs_pkts[1].as_ref().unwrap().data[8..129].try_into().unwrap()),
         } 
     }
+
+    pub fn try_password(self,password: &str) -> bool{
+        //generate PSK
+        let psk = crypto::generate_psk(password, &self.ssid);
+        //generate PTK
+        let ptk = crypto::generate_ptk(&psk, &self.client_mac, &self.station_mac, &self.a_nonce, &self.s_nonce);
+        //calculate the MIC
+        let kck:[u8;16] = ptk[..16].try_into().unwrap(); 
+        let mic:[u8;16] = crypto::digest_hmac_sha1(&kck, &self.mic_msg)[..16].try_into().unwrap();
+        //compare the MIC
+        println!("got mic:{:?}",mic);
+        aux::is_equal(&mic,&self.mic)
+    }
+
 }
 
 impl fmt::Display for Handshake{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f,"- ssid:{}\n- bssid: {}\n- client: {}\n- ANONCE: {}\n- SNONCE: {}\n- MIC: {}\n\n",
-                self.ssid, hex::encode(self.station_mac),hex::encode(self.client_mac), hex::encode(self.a_nonce), hex::encode(self.s_nonce),hex::encode(self.mic))
+        write!(f,"- ssid:{}\n- bssid: {}\n- client: {}\n- ANONCE: {}\n- SNONCE: {}\n- MIC: {}\n- MIC MSG: {}\n\n",
+                self.ssid, hex::encode(self.station_mac),hex::encode(self.client_mac), hex::encode(self.a_nonce), hex::encode(self.s_nonce),hex::encode(self.mic),hex::encode(self.mic_msg))
     }
 }
 
@@ -86,7 +105,79 @@ const PACKET_PER_CHANNEL: usize = 30;
 
 // --------------------------- Public Functions -------------------------------
 
+/* pub trait Next{
+    fn next(&mut self) -> Result<T,Error>;
+}
 
+
+impl<T> Next for pcap::Capture<T>{
+    fn next<T>(&mut self) -> Result<self,Error>{
+        self.next_packet()
+    }
+}
+*/
+
+// capture an handshake
+pub fn get_hs_from_file(mut pcap: pcap::Capture<pcap::Offline>,ssid: &str, bssid: &str) -> std::io::Result<Handshake> {
+    let mut hs_msgs: [Option<libwifi::frame::QosData>; 4] = Default::default();
+    loop { //TODO: replace with timeout
+        let frame;
+        match pcap.next_packet() { //listen for the next frame 
+            Ok(data) => {
+                frame = data;
+            }
+            _ => {
+                continue;
+            } //timeout TODO: timeout check could be checked here
+        }
+        let frame_offset = frame[FRAME_HEADER_LENGTH] as usize;
+        //parse the 802.11 frame
+        let parsed_frame = libwifi::parse_frame(&frame[frame_offset..]);
+        if parsed_frame.is_err() {
+            continue; //TODO: check what gets here
+        }
+
+        //filter only QoS Data frames
+        if let Frame::QosData(qos) = parsed_frame.unwrap() {
+            // check if msg type is EAPOL
+            let msg_type: u16 = ((qos.data[EAPOL_CODE_OFFSET] as u16) << 8) | qos.data[EAPOL_CODE_OFFSET+1] as u16;
+            if msg_type == 0x888e {// EAPOL
+                // get hs message number
+                let msg_num: u16 = ((qos.data[EAPOL_MSG_NUM_OFFSET] as u16) << 8) | qos.data[EAPOL_MSG_NUM_OFFSET+1] as u16;
+                match msg_num {
+                    EAPOL_MSG_1 =>{
+                        // check the bssid
+                        if hex::encode(qos.header.address_3.0) == bssid{
+                            hs_msgs[0] = Some(qos);
+                        }
+                    },
+
+                    EAPOL_MSG_2 =>{
+                        if hex::encode(qos.header.address_3.0) == bssid && hs_msgs[0].is_some() {
+                            hs_msgs[1] = Some(qos);
+                        }
+                    },
+                    EAPOL_MSG_3 =>{
+                        if hex::encode(qos.header.address_3.0) == bssid && hs_msgs[1].is_some() {
+                            hs_msgs[2] = Some(qos);
+                        }
+                    },
+
+                    EAPOL_MSG_4 =>{
+                        if hex::encode(qos.header.address_3.0) == bssid && hs_msgs[2].is_some() {
+                            hs_msgs[3] = Some(qos);
+                        }
+                    },
+
+                    _ => {todo!();} //TODO: handle error with parsing
+                }
+                if hs_msgs.iter().all(|m|m.is_some()){
+                    return Ok(Handshake::new(ssid,hs_msgs));
+                }
+            }
+        }
+    }
+}
 
 // capture an handshake
 pub fn get_hs(iface: &str,ssid: &str, bssid: &str) -> std::io::Result<Handshake> {

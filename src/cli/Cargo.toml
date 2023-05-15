@@ -12,3 +12,4 @@ aux = {path = "../aux"}
 wpa = {path = "../wpa"}
 crypto = {path = "../crypto"}
 hex = "0.4.3"
+pcap = "1.0.0"

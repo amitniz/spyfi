@@ -11,6 +11,16 @@ pub fn modulos(a: i32, b: i32) -> i32 {
     ((a % b) + b) % b
 }
 
+//check if two equal sized array are the same
+pub fn is_equal<const N:usize>(a: &[u8;N],b:&[u8;N]) -> bool{
+    for i in 0..N{
+        if a[i] != b[i]{
+            return false;
+        }
+    }
+    return true;
+}
+
 pub mod screen{
     use core::fmt;
     use std::io::{self,Write};
@@ -103,7 +113,8 @@ pub mod screen{
         print!("\x1b[{n_lines}A");
         io::stdout().flush();
     }
-    
+   
+
     /// returns a styled str
     #[macro_export]
     macro_rules! style {

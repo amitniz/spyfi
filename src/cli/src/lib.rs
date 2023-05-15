@@ -2,7 +2,7 @@ use clap::{Parser, ValueEnum};
 use wlan;
 use wpa;
 use crypto;
-
+use pcap;
 use hex::encode;
 
 const MAX_CHANNEL: usize = 11;
@@ -14,7 +14,11 @@ struct Args {
     /// name of the wlan interface
     #[arg(short, long, group = "interface")]
     iface: Option<String>,
-    
+   
+    ///read passwords file and perform dictionary attack 
+    #[arg(long)]
+    crack: Option<String>,
+
     ///generate psk 
     #[arg(long,requires= "ssid_group")]
     psk: Option<String>,
@@ -28,6 +32,10 @@ struct Args {
     /// bssid of the network (i.e AABBCCDDEEFF)
     #[arg(short, long)]
     bssid: Option<String>,
+
+    /// read a pcap capture
+    #[arg(long)]
+    inputfile: Option<String>,
 
     /// mac address of the target (if None, disconnect all)
     #[arg(short, long,requires = "deauth_group")]
@@ -86,6 +94,49 @@ pub fn run() {
 
                 println!("{} switched to monitor mode", iface);
             }
+        }
+    }
+
+    //crack
+    //TODO: make it pretty
+    if let Some(dictionary) = args.crack {
+        let path = std::path::Path::new(args.inputfile.as_ref().unwrap());
+        let pcap = pcap::Capture::from_file(path);
+        let ssid = args.ssid.as_ref().unwrap();
+        let bssid = args.bssid.as_ref().unwrap();
+        let hs;
+        match pcap{
+            Ok(mut cap) =>{
+                hs = wpa::get_hs_from_file(cap, ssid, bssid);
+                println!("{}",hs.as_ref().unwrap());
+
+            if hs.as_ref().unwrap().clone().try_password("test"){
+                println!("You found the password");
+            } else{
+                println!("wrong password");
+            }
+            },
+            _ =>{
+                println!("failed to open pcap:{}",args.inputfile.as_ref().unwrap());
+            } 
+        }        
+    }
+
+    //inputfile 
+    //TODO: MAKE IT PRETTY
+    if let Some(inputfile) = args.inputfile {
+        let path = std::path::Path::new(&inputfile);
+        let pcap = pcap::Capture::from_file(path);
+        match pcap{
+        Ok(mut cap) =>{
+                let ssid = args.ssid.as_ref().unwrap();
+                let bssid = args.bssid.as_ref().unwrap();
+                let hs = wpa::get_hs_from_file(cap, ssid, bssid);
+                println!("{}",hs.unwrap());
+            },
+        _ =>{
+                println!("failed to open pcap:{inputfile}");
+            } 
         }
     }
 
