@@ -102,7 +102,6 @@ impl Handshake{
         let kck:[u8;16] = ptk[..16].try_into().unwrap(); 
         let mic:[u8;16] = crypto::digest_hmac_sha1(&kck, &self.mic_msg)[..16].try_into().unwrap();
         //compare the MIC
-        println!("got mic:{:?}",mic);
         aux::is_equal(&mic,&self.mic)
     }
 

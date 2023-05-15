@@ -3,6 +3,7 @@
 //!  find nearest networks and perform actions such as disconnect them 
 //! from the WiFi.
 
+use std::io::{BufRead,BufReader};
 use clap::{Parser, ValueEnum};
 use wlan;
 use wpa;
@@ -131,41 +132,33 @@ pub fn run() {
         let pcap = pcap::Capture::from_file(path);
         let ssid = args.ssid.as_ref().unwrap();
         let bssid = args.bssid.as_ref().unwrap();
+        
+        //read HS from capture file
         let hs;
         match pcap{
             Ok(mut cap) =>{
                 hs = wpa::get_hs_from_file(cap, ssid, bssid);
-                println!("{}",hs.as_ref().unwrap());
 
-            if hs.as_ref().unwrap().clone().try_password("test"){
-                println!("You found the password");
-            } else{
-                println!("wrong password");
-            }
             },
             _ =>{
                 println!("failed to open pcap:{}",args.inputfile.as_ref().unwrap());
+                return;
             } 
         }        
+
+        // read passwords from dictionary
+        let path = std::fs::File::open(&dictionary).unwrap();
+        let reader = BufReader::new(path);
+        for line in reader.lines(){
+            println!("[-] trying: {}",line.as_ref().unwrap());
+            if hs.as_ref().unwrap().clone().try_password(line.as_ref().unwrap()){
+                println!("[+] password is: {}",line.as_ref().unwrap());
+                return ;
+            }
+        }
+        println!("[!] Exhausted.")
     }
 
-    //inputfile 
-    //TODO: MAKE IT PRETTY
-    if let Some(inputfile) = args.inputfile {
-        let path = std::path::Path::new(&inputfile);
-        let pcap = pcap::Capture::from_file(path);
-        match pcap{
-        Ok(mut cap) =>{
-                let ssid = args.ssid.as_ref().unwrap();
-                let bssid = args.bssid.as_ref().unwrap();
-                let hs = wpa::get_hs_from_file(cap, ssid, bssid);
-                println!("{}",hs.unwrap());
-            },
-        _ =>{
-                println!("failed to open pcap:{inputfile}");
-            } 
-        }
-    }
 
     // channel arg
     if let Some(channel) = args.channel {
