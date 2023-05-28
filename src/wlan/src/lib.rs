@@ -11,11 +11,8 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 /// Information on all interfaces 
 /// ## Description
 /// Presents a list of all the available interfaces.
-pub fn list_interfaces() {
-    println!("[+] Available Interfaces:");
-    for iface in pnet_datalink::interfaces() {
-        println!(" * {}", iface.name);
-    }
+pub fn list_interfaces() ->Vec<String> {
+    pnet_datalink::interfaces().iter().map(|i|i.name.clone()).collect()
 }
 
 /// Information on the interface

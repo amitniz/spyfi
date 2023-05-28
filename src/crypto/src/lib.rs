@@ -72,6 +72,15 @@ pub fn generate_ptk(psk: &[u8;32], client_mac: &[u8;6], station_mac:&[u8;6], a_n
     prf_512(psk,b"Pairwise key expansion", b)
 }
 
+// generate KCK
+// TODO: 
+// make sure to digest every iteration with reseting the mac. dont use update for each iteration.
+// return an array of the key
+pub fn generate_kck(psk: &[u8;32], client_mac: &[u8;6], station_mac:&[u8;6], a_nonce:&[u8;32], s_nonce:&[u8;32]) -> [u8;16]{
+    let b: [u8;76] = concat_arrays!(min(client_mac,station_mac),max(client_mac,station_mac),min(a_nonce,s_nonce),max(a_nonce,s_nonce));
+    prf_128(psk,b"Pairwise key expansion", b)
+}
+
 //TODO: remove unwrap
 fn prf_512(k:&[u8;32] ,a: &[u8;22], b:[u8;76]) -> [u8;64]{
     let mut key:Vec<[u8;20]> = vec!(); 
@@ -84,6 +93,12 @@ fn prf_512(k:&[u8;32] ,a: &[u8;22], b:[u8;76]) -> [u8;64]{
     ptk[0..64].try_into().unwrap()
 }
 
+//TODO: remove unwrap
+fn prf_128(k:&[u8;32] ,a: &[u8;22], b:[u8;76]) -> [u8;16]{
+    let msg:[u8;100] = concat_arrays!(a.clone(),[0],b,[0]);
+    let key:[u8;20] = digest_hmac_sha1(&k,&msg);
+    key[0..16].try_into().unwrap()
+}
 
 #[cfg(test)]
 mod tests{

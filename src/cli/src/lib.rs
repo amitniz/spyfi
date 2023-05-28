@@ -4,7 +4,7 @@
 //! from the WiFi.
 
 use std::io::{BufRead,BufReader};
-use clap::{Parser, ValueEnum};
+use clap::{Parser, ValueEnum, Args, Subcommand};
 use wlan;
 use wpa;
 use crypto;
@@ -12,67 +12,97 @@ use pcap;
 use hex::encode;
 
 const MAX_CHANNEL: usize = 11;
+const INTERVAL: u64 = 500;
 const PACKET_PER_CHANNEL: usize = 20; //num of packets to read per channel while sweeping
 
-/// contains the arguments of the CLI
-/// ## Description
-/// The struct contains the arguments of the CLI and description of the commands
+// contains the arguments of the CLI
+// ## Description
+// The struct contains the arguments of the CLI and description of the commands
+
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
+#[command(author,verbatim_doc_comment, version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands{
+    Utility(Utility), 
+    Enum(Enumerate), 
+    Attack(Attack), 
+
+}
+
+// --------------------------- Utility Commands -------------------------------
+
+#[derive(Args, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Utility{
     /// name of the wlan interface
-    #[arg(short, long, group = "interface")]
+    #[arg(short, long)]
     iface: Option<String>,
-   
-    ///read passwords file and perform dictionary attack 
-    #[arg(long)]
-    crack: Option<String>,
 
     ///generate psk 
-    #[arg(long,requires= "ssid_group")]
+    #[arg(long,requires="ssid",id="PASSPHRASE",group="utility")]
     psk: Option<String>,
 
-    //TODO: fix deauth group requirements
-    /// send deauth message to disconnect a client
-    #[arg(short, long, group ="deauth_group", requires="deauth_group")]
-    deauth: bool,
-
-    //TODO: add validation
-    /// bssid of the network (i.e AABBCCDDEEFF)
-    #[arg(short, long)]
-    bssid: Option<String>,
-
-    /// read a pcap capture
-    #[arg(long)]
-    inputfile: Option<String>,
-
-    /// mac address of the target (if None, disconnect all)
-    #[arg(short, long,requires = "deauth_group")]
-    target: Option<String>,
-
-    #[arg(short, long, group = "ssid_group")]
+    /// ssid
+    #[arg(short, long,requires="PASSPHRASE")]
     ssid: Option<String>,
 
-    #[arg(long, requires = "ssid_group")]
-    handshake: bool,
     /// list available interfaces
-    #[arg(short, long)]
+    #[arg(short, long,group="utility")]
     list: bool,
 
     /// set the interface mode
-    #[arg(value_enum, requires = "interface")]
+    #[arg(value_enum, requires = "iface",group="utility")]
     mode: Option<Mode>,
 
-    /// print interface info
-    #[arg(long, requires = "interface")]
-    info: bool,
-
     /// set capturing channel
-    #[arg(short, long, requires = "interface", value_parser = clap::value_parser!(u8).range(0..18))]
+    #[arg(short, long, requires = "iface", value_parser = clap::value_parser!(u8).range(0..18))]
     channel: Option<u8>,
 
-    #[arg(long, requires = "interface")]
-    networks: bool,
+}
+
+impl Utility{
+    fn parse(&self){
+        if self.list{
+            for iface in wlan::list_interfaces(){
+                println!("{iface}");
+            }
+        }
+        
+        if let Some(channel) = self.channel {
+            wlan::switch_iface_channel(self.iface.as_ref().unwrap(), channel).unwrap();
+            println!("switched to channel {}", channel);
+        }
+
+        if let Some(mode) = self.mode {
+            let iface = self.iface.as_ref().unwrap(); //TODO:remove unwraps
+            match mode {
+                Mode::Managed => {
+                    if let Err(err) = wlan::toggle_monitor_state(iface, false) {
+                        println!("Error: {}", err);
+                    }
+                    println!("{} switched to managed mode", iface);
+                }
+                Mode::Monitor => {
+                    if let Err(err) = wlan::toggle_monitor_state(iface, true) {
+                        println!("Error: {}", err);
+                    };
+
+                    println!("{} switched to monitor mode", iface);
+                }
+            }
+        }
+
+        if let Some(passphrase) = self.psk.as_ref() {
+            let ssid = self.ssid.as_ref().unwrap();
+            let psk = crypto::generate_psk(&passphrase, ssid);
+            println!("{}",encode(psk));
+        }
+    }
+
 }
 
 /// Enum with all modes of the interface
@@ -84,158 +114,236 @@ enum Mode {
     Monitor,
 }
 
-/// The function that runs the tool
-/// ## Description
-/// Run the program with the command `sudo ./spyfi` and the  
-/// arguments according to the desired action.
-/// ## Example
-/// **Basic usage:**
-/// - Command that presents networks the interface finds:
-/// 
-///     `sudo ./spyfi -i wlan0 --networks`
-/// - Command that changes the interface to Monitor mode:
-/// 
-///     `sudo ./spyfi -i wlan0 -mode Monitor`
-/// - Command that changes the channel of the interface to channel 5:
-/// 
-///     `sudo ./spyfi -i wlan0 -c 5`
-/// - Command that presents the list of the available interfaces:
-/// 
-///     `sudo ./spyfi -l`
-pub fn run() {
-    let args = Args::parse(); //parse arguments
+// --------------------------- Enumerate Commands -----------------------------
 
-    // mode arg
-    if let Some(mode) = args.mode {
-        let iface = args.iface.as_ref().unwrap();
-        match mode {
-            Mode::Managed => {
-                if let Err(err) = wlan::toggle_monitor_state(iface, false) {
-                    println!("Error: {}", err);
+//TODO: help decriptions
+#[derive(Args, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Enumerate{
+    /// listen for nearby stations or clients
+    #[arg(short,long,group="enumerate")]
+    listen: ListenMode,
+
+   // #[arg(short,long,id="BPF Filter",group="enumerate",requires="outputfile")]
+   // capture: Option<String>,
+
+    /// name of the wlan interface
+    #[arg(short, long)]
+    iface: String,
+    
+    #[arg(short,long, required_if_eq("listen","clients"))]
+    ssid: Option<String>,
+
+    ///timeout in seconds
+    #[arg(short, long,default_value_t=60)]
+    timeout: u32,
+
+    ///dump results into an outputfile
+    #[arg(short,long,requires="enumerate")]
+    outputfile: Option<String>,
+
+    ///use channel sweeping
+    #[arg(long,requires="enumerate")]
+    sweep:bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum ListenMode {
+    Stations,
+    Clients,
+}
+
+impl Enumerate{
+    fn parse(&self){
+        //if let Some(bpf_filter) = self.capture.as_ref(){
+        //    todo!("not implemented");
+        //}
+
+        match self.listen{
+            ListenMode::Stations =>{
+                let iface = self.iface.as_ref();
+                let interval = std::time::Duration::from_millis(INTERVAL);
+                let timeout = std::time::Duration::from_secs(self.timeout as u64);
+                let init_time = std::time::Instant::now();
+                while init_time.elapsed() <= timeout {
+                    let stations = wpa::list_networks(iface,interval);
+                    match stations {
+                        Ok(stations) =>{
+                            for station in stations{
+                                println!("{}\n\n",station);
+                            }
+                        },
+                        Err(e) =>{
+                            todo!("handle errors");
+                        }
+                    }
                 }
-                println!("{} switched to managed mode", iface);
-            }
-            Mode::Monitor => {
-                if let Err(err) = wlan::toggle_monitor_state(iface, true) {
-                    println!("Error: {}", err);
-                };
-
-                println!("{} switched to monitor mode", iface);
+            },
+            ListenMode::Clients =>{
+                todo!("not implemented");
             }
         }
-    }
 
-    //crack
-    //TODO: make it pretty
-    if let Some(dictionary) = args.crack {
-        let path = std::path::Path::new(args.inputfile.as_ref().unwrap());
-        let pcap = pcap::Capture::from_file(path);
-        let ssid = args.ssid.as_ref().unwrap();
-        let bssid = args.bssid.as_ref().unwrap();
-        
-        //read HS from capture file
-        let hs;
-        match pcap{
-            Ok(mut cap) =>{
-                hs = wpa::get_hs_from_file(cap, ssid, bssid);
+    }
+}
+
+// ----------------------------- Attack Commands ------------------------------
+
+#[derive(Args, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Attack{
+    ///attack type
+    #[arg(short,long="type",name="ATTACKTYPE")]
+    attack: AttackType,
+
+    ///interface
+    #[arg(long,short,group="source")]
+    iface: Option<String>,
+   
+    ///capture file
+    #[arg(short,long,group="source")]
+    capture: Option<String>,
+
+    ///number of threads to use for dictionary/bruteforce attack
+    #[arg(short,long,default_value_t=1,value_parser = clap::value_parser!(u8).range(1..100))]
+    threads:u8,
+
+    ///regex pattern for bruteforce
+    //#[arg(long)]
+    //pattern:Option<String>,
+
+    ///send deauths to achieve handshake faster (NOISY)
+    #[arg(long,required_if_eq("ATTACKTYPE","bruteforce"))]
+    aggresive:bool,
+
+    ///target MAC for DoS attack [default: broadcast]
+    #[arg(long)]
+    target: Option<String>,
+
+    ///network's SSID. Might be used instead of BSSID and we will try to get it (Unrecommended)
+    #[arg(
+        short, 
+        long,
+        required_if_eq("ATTACKTYPE","dict"),
+        required_if_eq("ATTACKTYPE","bruteforce"),
+        requires = "source"
+    )]
+    ssid: Option<String>,
+
+    ///network's BSSID
+    #[arg(
+        short, long,
+        required = true,
+        requires = "source"
+    )]
+    bssid: Option<String>,
+
+    ///use channel sweeping
+    #[arg(long,requires="iface")]
+    sweep:bool,
+
+    ///wordlist
+    #[arg(long,required_if_eq("ATTACKTYPE","dict"))]
+    wordlist: Option<String>,
+}
+
+
+#[derive(ValueEnum, Debug, Ord, Eq, PartialOrd, Clone, PartialEq)]
+enum AttackType{
+    ///dictionary file
+    Dict, 
+    /// Deauth attack
+    Dos,
+    /// Bruteforce attack
+    Bruteforce,
+}
+
+impl Attack{
+    fn parse(&self){
+        match self.attack{
+            AttackType::Dos =>{
+                //read target for the print
+                let target = self.target.as_deref().unwrap_or("broadcast"); 
+                let bssid = self.bssid.as_ref().unwrap();
+                let iface = self.iface.as_ref().unwrap();
+                println!("sending deauth to {target}");
+                let mut channel:u8 = 1;
+                loop{
+                    if self.sweep{
+                        wlan::switch_iface_channel(iface, channel);
+                        channel = aux::modulos((channel+1) as i32,(MAX_CHANNEL+1) as i32) as u8;
+                        println!("switched to channel {channel}");
+                    }
+                    for _ in 1..64{
+                        wpa::send_deauth(iface, bssid, self.target.clone());
+                    }
+                    
+                }
 
             },
-            _ =>{
-                println!("failed to open pcap:{}",args.inputfile.as_ref().unwrap());
-                return;
-            } 
-        }        
+            AttackType::Dict =>{
+                //TODO: REALTIME CAPTURE MODE
+                
+                //capture mode
+                if self.capture.is_some(){
+                    let path = std::path::Path::new(self.capture.as_ref().unwrap());
+                    let pcap = pcap::Capture::from_file(path);
+                    let ssid = self.ssid.as_ref().unwrap();
+                    let bssid = self.bssid.as_ref().unwrap();
+                    
+                    //read HS from capture file
+                    let hs;
+                    match pcap{
+                        Ok(cap) =>{
+                            hs = wpa::get_hs_from_file(cap, ssid, bssid);
 
-        // read passwords from dictionary
-        let path = std::fs::File::open(&dictionary).unwrap();
-        let reader = BufReader::new(path);
-        for line in reader.lines(){
-            println!("[-] trying: {}",line.as_ref().unwrap());
-            if hs.as_ref().unwrap().clone().try_password(line.as_ref().unwrap()){
-                println!("[+] password is: {}",line.as_ref().unwrap());
-                return ;
-            }
-        }
-        println!("[!] Exhausted.")
+                        },
+                        _ =>{
+                            println!("failed to open pcap:{}",self.capture.as_ref().unwrap());
+                            return;
+                        } 
+                    }        
+
+                    // read passwords from dictionary
+                    let wordlist = self.wordlist.as_ref().unwrap();
+                    let path = std::fs::File::open(&self.wordlist.as_ref().unwrap()).unwrap();
+                    let reader = BufReader::new(path);
+                    for line in reader.lines(){
+                        println!("[-] trying: {}",line.as_ref().unwrap());
+                        if hs.as_ref().unwrap().clone().try_password(line.as_ref().unwrap()){
+                            println!("[+] password is: {}",line.as_ref().unwrap());
+                            return ;
+                        }
+                    }
+                    println!("[!] Exhausted.")
+                }
+
+
+            },
+            AttackType::Bruteforce =>{
+
+            },
+        } 
     }
+}
 
+pub fn run() {
+    let args = Cli::parse(); //parse arguments
 
-    // channel arg
-    if let Some(channel) = args.channel {
-        wlan::switch_iface_channel(args.iface.as_ref().unwrap(), channel).unwrap();
-        println!("switched to channel {}", channel);
-    }
-
-    // list arg
-    if args.list {
-        wlan::list_interfaces();
-    }
-
-    //info arg
-    if args.info {
-        wlan::iface_info(args.iface.as_ref().unwrap());
-    }
     
-    //deauth TODO:update
-    if args.deauth{
-        let target = args.target.as_deref().unwrap_or("broadcast");
-        println!("sending deauth to {target} from bssid: {}",args.bssid.as_ref().unwrap());
-        for _ in 1..64{
-            wpa::send_deauth(args.iface.as_ref().unwrap(),args.bssid.as_ref().unwrap(),args.target.clone());
+    match args.command {
+        Commands::Utility(u) =>{
+            u.parse();
+        },
+
+        Commands::Enum(e) =>{
+            e.parse();
+        },
+
+        Commands::Attack(a) =>{
+            a.parse();
+        },
+        _ =>{
+            println!("Not implemented yet");
         }
-    }
-
-    //networks arg
-    if args.networks {
-        let mut channel: usize = 1;
-        let mut networks : [Vec<wpa::NetworkInfo>; MAX_CHANNEL] = Default::default();
-
-        let mut last_print_lines = 1; //TODO: for the print, move to Aux
-        while channel <= MAX_CHANNEL{
-            match wpa::list_channel_networks(args.iface.as_ref().unwrap(), channel as u8, PACKET_PER_CHANNEL){
-                Ok(network_list) =>{
-                    networks[channel-1] = network_list;
-                }
-                Err(err) =>{
-                    todo!();
-                }
-            }
-            /* 
-            //pretty print
-            //hide cursor
-            println!("\x1b[25l");
-            //move up the cursor
-            println!("\x1b[{}A", last_print_lines);
-            //print ssids
-            println!("\x1b[1;30;37mSSIDS:\x1b[0m");
-            println!("{:-<80}", "");
-            for s in ssids.iter() {
-                println!("\x1b[2K\x1b[1;32m{}\x1b[0m", s);
-            }
-            println!("{:-<80}", "");
-            //update line count
-            last_print_lines = networks.0.len() + 5;
-            */
-            //channel sweeping
-            
-            for i in 0..MAX_CHANNEL{
-                for network in &networks[i]{
-                    println!("{}\n\n", network);
-                }
-            }
-
-            channel = (aux::modulos(channel as i32, MAX_CHANNEL as i32) as u8 + 1) as usize;
         
-        }
-
-    }
-
-    if let Some(psk) = args.psk{
-        println!("{}",encode(crypto::generate_psk(psk.as_ref(),args.ssid.as_ref().unwrap())))
-    }
-
-    if args.handshake {
-        let hs = wpa::get_hs(args.iface.as_ref().unwrap(), args.ssid.as_ref().unwrap(),args.bssid.as_ref().unwrap()).unwrap();
-        println!("Got HandShake!\n----------\n{}",hs);
     }
 }

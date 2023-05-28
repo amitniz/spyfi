@@ -96,10 +96,9 @@ impl Handshake{
     pub fn try_password(self,password: &str) -> bool{
         //generate PSK
         let psk = crypto::generate_psk(password, &self.ssid);
-        //generate PTK
-        let ptk = crypto::generate_ptk(&psk, &self.client_mac, &self.station_mac, &self.a_nonce, &self.s_nonce);
+        //generate KCK
+        let kck = crypto::generate_kck(&psk, &self.client_mac, &self.station_mac, &self.a_nonce, &self.s_nonce);
         //calculate the MIC
-        let kck:[u8;16] = ptk[..16].try_into().unwrap(); 
         let mic:[u8;16] = crypto::digest_hmac_sha1(&kck, &self.mic_msg)[..16].try_into().unwrap();
         //compare the MIC
         aux::is_equal(&mic,&self.mic)
@@ -116,7 +115,7 @@ impl fmt::Display for Handshake{
 
 impl fmt::Display for NetworkInfo{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f,"{}\n-----------\n- channel: {}\n- signal: {}\n-bssid: {}",self.ssid,self.channel,self.signal_strength,hex::encode(self.bssid))
+        write!(f,"{}\n-----------\n- channel: {}\n- signal: {}\n- bssid: {}",self.ssid,self.channel,self.signal_strength,hex::encode(self.bssid))
     }
 }
 
@@ -279,31 +278,38 @@ pub fn send_deauth(iface: &str, bssid: &str, target: Option<String>) -> std::io:
 }
 
 
-/// Scan networks on a given channel
+/// Scan nearby networks
 /// ## Description
-/// The interface scans networks on a given channel and returns a list of 
-/// all available networks.
-/// It uses beacon packets in order to find the networks.
-pub fn list_channel_networks(iface: &str,channel:u8, max_packets: usize) -> Result<Vec<NetworkInfo>> {
+//TODO: description, add type of WPA
+pub fn list_networks(iface: &str, interval: std::time::Duration) -> Result<Vec<NetworkInfo>> {
 
     let mut networks:Vec<NetworkInfo> = vec![];
+    let current_channel = 0; //TODO: fix get_current_channel
     // get rx channel to the given interface
     let mut rx = wlan::get_recv_channel(iface)?;
-    // set channel
-    wlan::switch_iface_channel(iface, channel)?;
-    
-    for _ in 0..max_packets {
+    //read time 
+    let init_time = std::time::Instant::now();
+
+
+    //TODO: convert unwrap to ?
+    while init_time.elapsed() <= interval {
         let frame;
         match rx.next() {
             Ok(data) => {
                 frame = data;
             }
             _ => {
-                break;
+                continue;
             } //timeout
         }
         let frame_offset = frame[FRAME_HEADER_LENGTH] as usize; 
-        let pkt = libwifi::parse_frame(&frame[frame_offset..]);
+        let pkt;
+        if frame_offset < frame.len(){
+            pkt = libwifi::parse_frame(&frame[frame_offset..]);
+        }else{
+            pkt = Err(libwifi::error::Error::UnhandledProtocol("unknown message".to_owned()));
+        }
+
         if pkt.is_err() {
             eprintln!("failed to parse frame: {:?}",frame); //TODO: consider log error differently
             continue;
@@ -318,14 +324,13 @@ pub fn list_channel_networks(iface: &str,channel:u8, max_packets: usize) -> Resu
                     bssid: bssid,
                     signal_strength: signal,
                     ssid: ssid.clone(),
-                    channel:channel
+                    channel:current_channel
                 });
             }
         }
     }
     //remove duplicates
     //return detected networks
-    
     networks = networks.into_iter().unique_by(|i| i.bssid).collect::<Vec<_>>();
     Ok(networks)
 }
