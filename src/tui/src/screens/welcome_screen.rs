@@ -32,8 +32,8 @@ impl<B:Backend> Screen<B> for WelcomeScreen{
         let w_size = f.size();
         let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .vertical_margin(10)
-        .horizontal_margin(105)
+        .vertical_margin(5)
+        .horizontal_margin(55)
         .constraints([Constraint::Percentage(30),Constraint::Percentage(30),Constraint::Percentage(40)].as_ref())
         .split(Rect {
             x: 0,
@@ -64,8 +64,11 @@ impl<B:Backend> Screen<B> for WelcomeScreen{
     fn handle_input(&mut self,key:KeyEvent){
         match key.code {
                             KeyCode::Left => self.iface_list.unselect(),
+                            KeyCode::Char('h') => self.iface_list.unselect(),
                             KeyCode::Down => self.iface_list.next(),
+                            KeyCode::Char('j') => self.iface_list.next(),
                             KeyCode::Up => self.iface_list.previous(),
+                            KeyCode::Char('k') => self.iface_list.previous(),
                             _ => {}
         }
     }
