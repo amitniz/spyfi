@@ -1,4 +1,5 @@
 use super::*;
+use crossterm::style::style;
 use wlan;
 
 const LOGO: [&'static str; 7] = [
@@ -42,16 +43,19 @@ impl<B:Backend> Screen<B> for WelcomeScreen{
         });
         let welcome_text:Vec<Spans> = LOGO.into_iter().map(|s|Spans::from(vec![Span::raw(s)])).collect();
 
-        let welcome_block = Paragraph::new(welcome_text).block(Block::default()).alignment(tui::layout::Alignment::Center);
-        let ifaces = List::new(self.iface_list.items.iter().map(|i|{ListItem::new(format!(" 🎸 {} ",i))}).collect::<Vec<ListItem>>())
+        let welcome_block = Paragraph::new(welcome_text)
+            .block(Block::default())
+            .alignment(tui::layout::Alignment::Center)
+            .style(Style::default().fg(colorscheme::White));
+        let ifaces = List::new(self.iface_list.items.iter().map(|i|{ListItem::new(format!(" 🍕 {} ",i))}).collect::<Vec<ListItem>>())
             .block(
                 Block::default()
                     .title(" Interfaces ")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::White).bg(Color::Green))
+                    .border_style(Style::default().fg(colorscheme::White).bg(colorscheme::Green))
             )
-            .style(Style::default().bg(Color::White).fg(Color::DarkGray))
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD).bg(Color::Gray));
+            .style(Style::default().bg(colorscheme::LightGreen).fg(colorscheme::Purple))
+            .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(colorscheme::White).bg(colorscheme::Purple));
         f.render_widget(welcome_block, chunks[0]);
         f.render_stateful_widget(ifaces, chunks[1], &mut self.iface_list.state);
     }

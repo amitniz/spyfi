@@ -9,6 +9,7 @@ use tui::{
     Frame
 };
 
+mod colorscheme;
 
 pub trait Screen<B:Backend>{
     fn set_layout(&mut self, f: &mut Frame<B>);
