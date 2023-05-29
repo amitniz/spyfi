@@ -12,8 +12,10 @@ use tui::{
 mod colorscheme;
 
 pub trait Screen<B:Backend>{
+    /// Sets a layout for a given frame    
     fn set_layout(&mut self, f: &mut Frame<B>);
-    fn handle_input(&mut self, key:KeyEvent);
+    /// handle keyboard event. If uncatched return false
+    fn handle_input(&mut self, key:KeyEvent) -> bool;
 }
 
 // ------------------------------ import screens ------------------------------

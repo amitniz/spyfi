@@ -29,15 +29,19 @@ impl<B:Backend> Screen<B> for WelcomeScreen{
 
     fn set_layout(&mut self, f: &mut Frame<B>) { 
         
-        let w_size = f.size();
+        let w_size = Rect{
+            //for a better resize response
+            width: f.size().width.min(40),
+            ..f.size()
+        };
         let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .vertical_margin(5)
-        .horizontal_margin(55)
-        .constraints([Constraint::Percentage(30),Constraint::Percentage(30),Constraint::Percentage(40)].as_ref())
+        .vertical_margin(w_size.height/8)
+        .constraints([Constraint::Percentage(40),Constraint::Percentage(30),Constraint::Percentage(30)].as_ref())
         .split(Rect {
-            x: 0,
-            y: 0,
+            //calcultes the location of the center
+            x: (f.size().width - w_size.width)/2,
+            y: (f.size().height - w_size.height)/2,
             width: w_size.width,
             height: w_size.height,
         });
@@ -61,16 +65,14 @@ impl<B:Backend> Screen<B> for WelcomeScreen{
     }
    
 
-    fn handle_input(&mut self,key:KeyEvent){
+    fn handle_input(&mut self,key:KeyEvent) -> bool{
         match key.code {
-                            KeyCode::Left => self.iface_list.unselect(),
-                            KeyCode::Char('h') => self.iface_list.unselect(),
-                            KeyCode::Down => self.iface_list.next(),
-                            KeyCode::Char('j') => self.iface_list.next(),
-                            KeyCode::Up => self.iface_list.previous(),
-                            KeyCode::Char('k') => self.iface_list.previous(),
-                            _ => {}
+                            KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => self.iface_list.unselect(),
+                            KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('J') => self.iface_list.next(),
+                            KeyCode::Up |KeyCode::Char('k') | KeyCode::Char('K') => self.iface_list.previous(),
+                            _ => return false
         }
+        true
     }
 }
 

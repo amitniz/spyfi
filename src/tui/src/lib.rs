@@ -39,13 +39,16 @@ impl Tui{
         let res: io::Result<()>;
         loop {
             terminal.draw(|f| self.screen.set_layout(f))?;
-
             if let Event::Key(key) = event::read()? {
-                if let KeyCode::Char('q') = key.code {
-                    res = Ok(());
-                    break;
+                if !self.screen.handle_input(key){
+                    // if the key wasn't handled by the screen
+                    // GLOBAL SHORTKEYS
+                    if let KeyCode::Char('q') | KeyCode::Char('Q')= key.code {
+                        res = Ok(());
+                        break;
+                    }
+
                 }
-                self.screen.handle_input(key);
             }
         }
 
