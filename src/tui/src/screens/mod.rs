@@ -3,19 +3,22 @@ use crossterm::event::{KeyEvent,KeyCode};
 use tui::{
     backend::Backend,
     layout::{Rect, Constraint, Direction, Layout},
-    widgets::{Block, Borders,Paragraph,ListItem,ListState,List},
+    widgets::{Block, Borders,Paragraph,ListItem,ListState,List,Wrap},
     text::{Span,Spans},
     style::{Color,Style,Modifier},
     Frame
 };
 
-mod colorscheme;
+pub mod colorscheme;
+use colorscheme::Theme;
 
 pub trait Screen<B:Backend>{
     /// Sets a layout for a given frame    
     fn set_layout(&mut self, f: &mut Frame<B>);
     /// handle keyboard event. If uncatched return false
     fn handle_input(&mut self, key:KeyEvent) -> bool;
+    fn set_theme(&mut self, theme:Theme);
+    fn theme_name(&mut self) -> &str;
 }
 
 // ------------------------------ import screens ------------------------------

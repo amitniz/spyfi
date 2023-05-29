@@ -10,3 +10,4 @@ wlan = {path="../wlan"}
 aux = {path="../aux"}
 tui = "0.19.0"
 crossterm = "0.26.0"
+rand = "0.8.5"

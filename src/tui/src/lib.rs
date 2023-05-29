@@ -1,5 +1,5 @@
 use std::{io::{self, Stdout},error::Error, default};
-
+use rand::Rng;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
@@ -11,11 +11,12 @@ use tui::{
 };
 
 mod screens;
-use screens::Screen;
+use screens::{Screen,colorscheme};
 
- pub struct Tui{
+pub struct Tui{
     screen: Box<dyn Screen<CrosstermBackend<Stdout>>>,// the current screen
     program_state:ProgramState,
+    theme: colorscheme::Theme,
 }
 
 impl Tui{
@@ -24,6 +25,7 @@ impl Tui{
         Tui{
             screen:Box::new(screens::WelcomeScreen::default()),
             program_state: ProgramState::default(),
+            theme: colorscheme::Theme::default(),
         }
     }
 
@@ -43,9 +45,14 @@ impl Tui{
                 if !self.screen.handle_input(key){
                     // if the key wasn't handled by the screen
                     // GLOBAL SHORTKEYS
-                    if let KeyCode::Char('q') | KeyCode::Char('Q')= key.code {
-                        res = Ok(());
-                        break;
+                    match key.code{
+                        
+                        KeyCode::Char('q') | KeyCode::Char('Q') => {
+                            res = Ok(());
+                            break;
+                        }
+                        KeyCode::Char('p') => {self.randomize_theme() }
+                        _ => {}
                     }
 
                 }
@@ -66,6 +73,26 @@ impl Tui{
         }
 
         Ok(())
+    }
+
+    pub fn randomize_theme(&mut self){
+        let mut rng = rand::thread_rng();
+        let rand_int = rng.gen_range(1..6);
+        match rand_int{
+            1=>{self.theme = colorscheme::Theme::eggplant();}
+            2=>{self.theme = colorscheme::Theme::jamaica();}
+            3=>{self.theme = colorscheme::Theme::megaman();}
+            4=>{self.theme = colorscheme::Theme::desert();}
+            5=>{self.theme = colorscheme::Theme::pokemon();}
+            6=>{self.theme = colorscheme::Theme::default();}
+            _=>{}
+        }
+        //prevent from choosing the current theme
+        if self.screen.theme_name() == self.theme.name{
+            self.randomize_theme()
+        }else{
+            self.screen.set_theme(self.theme.clone());
+        }
     }
 }
 
