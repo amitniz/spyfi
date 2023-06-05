@@ -13,11 +13,17 @@ const ITERATIONS: u32 = 4096;
 /// Pre-Shared Key is a key generated using a password and a SSID 
 /// string during handshake process. It is a 256 bit key that is calculated 
 /// with pbkdf2 algorithm that uses Sha1.
+/// 
+/// The function receives 2 strings that represent the password and the SSID
+/// and returns an array of the PSK.
 /// ## Example
 /// **Basic usage:**
 /// ```
 ///     let x = crypto::generate_psk("12345678", "test");
-///     let answer: [u8;32] = fe727aa8b64ac9b3f54c72432da14faed933ea511ecab15bbc6c52e7522f709a; // FIXME
+///     let answer: [u8;32] = [0xfe, 0x72, 0x7a, 0xa8, 0xb6, 0x4a, 0xc9, 0xb3,
+///                            0xf5, 0x4c, 0x72, 0x43, 0x2d, 0xa1, 0x4f, 0xae,
+///                            0xd9, 0x33, 0xea, 0x51, 0x1e, 0xca, 0xb1, 0x5b,
+///                            0xbc, 0x6c, 0x52, 0xe7, 0x52, 0x2f, 0x70, 0x9a];
 ///     assert_eq!(answer, x);
 /// ```
 pub fn generate_psk(passphrase:&str,ssid:&str) -> [u8;32]{
@@ -48,6 +54,10 @@ fn max<const N: usize>(a:&[u8; N],b:&[u8; N]) -> [u8;N] {
     b.clone()
 }
 
+/// Collect the relevant MIC data to one array
+/// ## Description
+/// Receives the data message of a frame and 
+/// reassemble the relevant data to a MIC message.
 pub fn mic_data(data:&[u8;121]) -> [u8;121]{
     let pre_data:[u8;81] = data[..81].try_into().unwrap();
     let post_data:[u8;24] = data[97..].try_into().unwrap();
@@ -55,6 +65,12 @@ pub fn mic_data(data:&[u8;121]) -> [u8;121]{
 }
 
 
+/// Digest of a message using HMAC Sha1
+/// ## Description
+/// Return digest of a message for given secret key and digest.
+/// 
+/// The function receives a key and a message and uses HMAC Sha1 
+/// to return an array of the digest of a message.
 //TODO: return result instead of unwraping
 pub fn digest_hmac_sha1<const K:usize,const N:usize>(key: &[u8;K],msg: &[u8;N]) -> [u8;20]{
         type HmacSha1 = Hmac<Sha1>;
@@ -63,7 +79,51 @@ pub fn digest_hmac_sha1<const K:usize,const N:usize>(key: &[u8;K],msg: &[u8;N]) 
         mac.finalize().into_bytes().into()
 }
 
-// generate PTK
+/// Generate PTK
+/// ## Description
+/// Pairwise Transient key is used to encrypt all unicast traffic between a 
+/// client station and the access point. PTK is unique between a client station 
+/// and access point. To generate PTK, the following information is required:
+/// 
+/// PTK = PRF-512(PSK + MAC1 + MAC2 + Anonce + SNonce)
+/// 
+/// * PSK - higher-level key computed with password and SSID
+/// * MAC(AA)- the mac address of the AP (authenticator).
+/// * MAC(SA)- the mac address of the client (supplicant).
+/// * MAC1 - min between MAC(AA) and MAC(SA)
+/// * MAC2 - max between MAC(AA) and MAC(SA)
+/// * ANONCE- is a random number that the AP has made.
+/// * SNONCE- is a random number that the client has made.
+///
+/// ## Example
+/// **Basic usage:**
+/// ```
+///     let SSID = "Praneeth";
+///     let password = "kemparajanusha";
+///     let psk = crypto::generate_psk(password, SSID);
+///     let client_mac = [0xc0, 0xf4, 0xe6, 0x4b, 0x6a, 0xcf];
+///     let station_mac = [0x60, 0xe3, 0x27, 0xf8, 0x14, 0xa0];
+///     let a_nonce = [0xac, 0x98, 0x71, 0xc9, 0xca, 0x12, 0x94, 0x68,
+///                    0x70, 0x8c, 0xa0, 0xd5, 0x54, 0xe2, 0x2f, 0x4f,
+///                    0x8b, 0x6e, 0xaa, 0x6d, 0xba, 0xa1, 0x21, 0xd2,
+///                    0x23, 0x3b, 0xf3, 0x3c, 0xbc, 0x29, 0xd3, 0x46];
+///     let s_nonce = [0x52, 0x14, 0xc4, 0xdb, 0xe4, 0xa5, 0x67, 0xe7,
+///                    0x8b, 0x8f, 0x30, 0xb2, 0xb0, 0x16, 0xa2, 0xd9,
+///                    0x0e, 0xa5, 0x0c, 0x27, 0xd4, 0x08, 0x61, 0x4c,
+///                    0x1f, 0xc0, 0xa0, 0x93, 0x4a, 0x88, 0x9a, 0xda];
+/// 
+///     let ptk = crypto::generate_ptk(&psk, &client_mac, &station_mac, &a_nonce, &s_nonce);
+/// 
+///     let answer: [u8;64] = [0xfb, 0x18, 0x56, 0x0e, 0x63, 0x90, 0x9f, 0x84,
+///                            0xf3, 0x1d, 0x39, 0xda, 0x03, 0xa5, 0xd8, 0x2f,
+///                            0xdc, 0x78, 0xc3, 0xb5, 0x6f, 0x18, 0x70, 0x54,
+///                            0x43, 0x08, 0xb8, 0x4d, 0xee, 0x21, 0x44, 0xb8,
+///                            0x76, 0x15, 0x72, 0x9c, 0x48, 0x84, 0xa5, 0x45,
+///                            0xd3, 0x92, 0xc2, 0x0b, 0x3f, 0x69, 0x70, 0x25,
+///                            0x63, 0x32, 0x45, 0xfc, 0x5a, 0x0f, 0xa1, 0x5e,
+///                            0xfe, 0xb0, 0xc8, 0x25, 0x01, 0xf3, 0xa7, 0xb4];
+///     assert_eq!(answer, ptk);
+/// ```
 // TODO: 
 // make sure to digest every iteration with reseting the mac. dont use update for each iteration.
 // return an array of the key
@@ -72,7 +132,46 @@ pub fn generate_ptk(psk: &[u8;32], client_mac: &[u8;6], station_mac:&[u8;6], a_n
     prf_512(psk,b"Pairwise key expansion", b)
 }
 
-// generate KCK
+
+/// Generate KCK
+/// ## Description
+/// Key Confirmation Key (KCK) is the first 16 bytes of the PTK.
+/// It is used to compute MIC for integrity.To generate KCK, 
+/// the following information is required:
+/// 
+/// KCK = PRF-128(PSK + MAC1 + MAC2 + Anonce + SNonce)
+/// 
+/// * PSK - higher-level key computed with password and SSID
+/// * MAC(AA)- the mac address of the AP (authenticator).
+/// * MAC(SA)- the mac address of the client (supplicant).
+/// * MAC1 - min between MAC(AA) and MAC(SA)
+/// * MAC2 - max between MAC(AA) and MAC(SA)
+/// * ANONCE- is a random number that the AP has made.
+/// * SNONCE- is a random number that the client has made.
+///
+/// ## Example
+/// **Basic usage:**
+/// ```
+///     let SSID = "Praneeth";
+///     let password = "kemparajanusha";
+///     let psk = crypto::generate_psk(password, SSID);
+///     let client_mac = [0xc0, 0xf4, 0xe6, 0x4b, 0x6a, 0xcf];
+///     let station_mac = [0x60, 0xe3, 0x27, 0xf8, 0x14, 0xa0];
+///     let a_nonce = [0xac, 0x98, 0x71, 0xc9, 0xca, 0x12, 0x94, 0x68,
+///                    0x70, 0x8c, 0xa0, 0xd5, 0x54, 0xe2, 0x2f, 0x4f,
+///                    0x8b, 0x6e, 0xaa, 0x6d, 0xba, 0xa1, 0x21, 0xd2,
+///                    0x23, 0x3b, 0xf3, 0x3c, 0xbc, 0x29, 0xd3, 0x46];
+///     let s_nonce = [0x52, 0x14, 0xc4, 0xdb, 0xe4, 0xa5, 0x67, 0xe7,
+///                    0x8b, 0x8f, 0x30, 0xb2, 0xb0, 0x16, 0xa2, 0xd9,
+///                    0x0e, 0xa5, 0x0c, 0x27, 0xd4, 0x08, 0x61, 0x4c,
+///                    0x1f, 0xc0, 0xa0, 0x93, 0x4a, 0x88, 0x9a, 0xda];
+/// 
+///     let kck = crypto::generate_kck(&psk, &client_mac, &station_mac, &a_nonce, &s_nonce);
+/// 
+///     let answer: [u8;16] = [0xfb, 0x18, 0x56, 0x0e, 0x63, 0x90, 0x9f, 0x84,
+///                            0xf3, 0x1d, 0x39, 0xda, 0x03, 0xa5, 0xd8, 0x2f];
+///     assert_eq!(answer, kck);
+/// ```
 // TODO: 
 // make sure to digest every iteration with reseting the mac. dont use update for each iteration.
 // return an array of the key
@@ -81,6 +180,18 @@ pub fn generate_kck(psk: &[u8;32], client_mac: &[u8;6], station_mac:&[u8;6], a_n
     prf_128(psk,b"Pairwise key expansion", b)
 }
 
+
+/// PRF-512 to compute PTK
+/// ## Description
+/// Pseudo-Random Function that is used in WPA to generate the PTK.
+/// The function incorporating a text string into the input and 
+/// designed to produce a certain number of bits, in this case 512.
+/// 
+/// The function requiers the following information:
+/// 
+/// * k - Random number
+/// * a - The text string
+/// * b - A sequence of bytes formed by the MAC address 
 //TODO: remove unwrap
 fn prf_512(k:&[u8;32] ,a: &[u8;22], b:[u8;76]) -> [u8;64]{
     let mut key:Vec<[u8;20]> = vec!(); 
@@ -93,6 +204,17 @@ fn prf_512(k:&[u8;32] ,a: &[u8;22], b:[u8;76]) -> [u8;64]{
     ptk[0..64].try_into().unwrap()
 }
 
+/// PRF-128 to compute KCK
+/// ## Description
+/// Pseudo-Random Function that is used in WPA to generate the PTK.
+/// The function incorporating a text string into the input and 
+/// designed to produce a certain number of bits, in this case 128.
+/// 
+/// The function requiers the following information:
+/// 
+/// * k - Random number
+/// * a - The text string
+/// * b - A sequence of bytes formed by the MAC address 
 //TODO: remove unwrap
 fn prf_128(k:&[u8;32] ,a: &[u8;22], b:[u8;76]) -> [u8;16]{
     let msg:[u8;100] = concat_arrays!(a.clone(),[0],b,[0]);

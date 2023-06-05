@@ -20,8 +20,22 @@ pub fn modulos(a: i32, b: i32) -> i32 {
     ((a % b) + b) % b
 }
 
-//check if two equal sized array are the same
-//TODO: description + tests
+/// Check if two equal sized array are the same
+/// ## Description
+/// Receives 2 arrays of the same size and returns whether the arrays are 
+/// equal by comparing all elements.
+/// ## Example
+/// **Basic usage:**
+/// ```
+///     let a = [10, 4, 8];
+///     let b = [10, 4, 8];
+///     let c = [20, 6, 8];
+/// 
+///     let mut equal = aux::is_equal(&a, &b);
+///     assert_eq!(true, equal);
+///     equal = aux::is_equal(&a, &c);
+///     assert_eq!(false, equal);
+/// ```
 pub fn compare_arrays<const N:usize>(a: &[u8;N],b:&[u8;N]) -> bool{
     for i in 0..N{
         if a[i] != b[i]{
