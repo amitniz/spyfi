@@ -168,7 +168,7 @@ impl Enumerate{
                     let stations = wpa::list_networks(iface,interval);
                     match stations {
                         Ok(stations) =>{
-                            for station in stations{
+                            for (_,station) in stations{
                                 println!("{}\n\n",station);
                             }
                         },

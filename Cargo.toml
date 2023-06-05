@@ -1,5 +1,4 @@
 [workspace]
-
 members = ["src/tui","src/wlan", "src/aux","src/cli","src/wpa"]
 
 [package]
@@ -10,10 +9,9 @@ edition = "2021"
 [dependencies]
 pnet_datalink ="0.33.0"
 libwifi = "0.3"
-nix ={version="0.26",feature="ioctl"}
+hmac = "0.12.1"
 wlan = {path="src/wlan"}
 aux = {path="src/aux"}
 cli = {path = "src/cli"}
 tui = {path = "src/tui"}
 crypto = {path = "src/crypto"}
-hmac = "0.12.1"

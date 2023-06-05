@@ -2,14 +2,13 @@
 //! `wpa` contains functions of the tool that communicate with other devices. 
 //! It can capture packets from the 4-Way Handshake process and send 
 //! de-authentication to other BSSIDs.
-use std::io::Result;
+use std::{io::Result, collections::HashMap};
 use itertools::Itertools;
-use libwifi::{Frame,Addresses};
-use std::io::{Error,ErrorKind};
+use libwifi::{Frame, Addresses};
+use std::io::Error;
 use core::fmt;
-use std::io::{self,Write};
-use pnet_datalink;
-use hex::{FromHex};
+use hex::FromHex;
+
 use aux;
 use pcap;
 use wlan;
@@ -19,7 +18,6 @@ use crypto;
 //PACKET PARSING POSITIONS
 const SIGNAL_POS: usize = 30;
 const FRAME_HEADER_LENGTH: usize = 2;
-
 const EAPOL_MSG_NUM_OFFSET: usize = 0xd;
 const EAPOL_CODE_OFFSET: usize = 0x6;
 const EAPOL_NONCE_OFFSET: usize = 0x19;
@@ -46,13 +44,14 @@ const EAPOL_MSG_4: u16 = 0x30a;
 /// * Channel
 /// * Signal strength
 //TODO: use in list networks
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone, PartialEq, Eq, Hash)]
 pub struct NetworkInfo {
-    bssid: [u8; 6],
-    //add WPA Protocol
-    ssid: String,
-    channel: u8,
-    signal_strength: i8,
+    pub bssid: [u8; 6],
+    //TODO: add WPA Protocol
+    pub ssid: String,
+    pub channel: u8,
+    pub signal_strength: i8,
+    pub clients: Vec<[u8;6]>,
 }
 
 /// contains the information captured from the handshake
@@ -101,9 +100,18 @@ impl Handshake{
         //calculate the MIC
         let mic:[u8;16] = crypto::digest_hmac_sha1(&kck, &self.mic_msg)[..16].try_into().unwrap();
         //compare the MIC
-        aux::is_equal(&mic,&self.mic)
+        aux::compare_arrays(&mic,&self.mic)
     }
 
+}
+
+impl NetworkInfo{
+    pub fn update(&mut self,other: &mut NetworkInfo){
+            assert_eq!(self.ssid,other.ssid);//TODO: replace with result or something
+            self.channel = other.channel;
+            self.signal_strength = other.signal_strength;
+            self.clients.append(other.clients.as_mut());
+    }
 }
 
 impl fmt::Display for Handshake{
@@ -113,11 +121,13 @@ impl fmt::Display for Handshake{
     }
 }
 
+
 impl fmt::Display for NetworkInfo{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f,"{}\n-----------\n- channel: {}\n- signal: {}\n- bssid: {}",self.ssid,self.channel,self.signal_strength,hex::encode(self.bssid))
     }
 }
+
 
 const MAX_CHANNEL: u8 = 8;
 const PACKET_PER_CHANNEL: usize = 30;
@@ -281,9 +291,9 @@ pub fn send_deauth(iface: &str, bssid: &str, target: Option<String>) -> std::io:
 /// Scan nearby networks
 /// ## Description
 //TODO: description, add type of WPA
-pub fn list_networks(iface: &str, interval: std::time::Duration) -> Result<Vec<NetworkInfo>> {
+pub fn list_networks(iface: &str, interval: std::time::Duration) -> Result<HashMap<String,NetworkInfo>> {
 
-    let mut networks:Vec<NetworkInfo> = vec![];
+    let mut networks:HashMap<String,NetworkInfo> = HashMap::new();
     let current_channel = 0; //TODO: fix get_current_channel
     // get rx channel to the given interface
     let mut rx = wlan::get_recv_channel(iface)?;
@@ -311,6 +321,46 @@ pub fn list_networks(iface: &str, interval: std::time::Duration) -> Result<Vec<N
         }
 
         if pkt.is_err() {
+            continue;
+        }
+        if let Frame::Beacon(beacon) = pkt.unwrap() {
+            if let Some(ssid) = beacon.station_info.ssid {
+
+                let bssid = beacon.header.bssid().unwrap().0; //extract bssid
+                let signal = frame[SIGNAL_POS] as i8; //extract signal
+    
+                let mut network = NetworkInfo{
+                    bssid: bssid,
+                    signal_strength: signal,
+                    ssid: ssid.clone(),
+                    channel:current_channel,
+                    clients: vec![],
+
+                };
+                networks.entry(network.ssid.clone())
+                    .and_modify(|e|  e.update(&mut network))
+                    .or_insert(network);
+            }
+        }
+    }
+    Ok(networks)
+}
+pub fn list_networks_new(frame: &[u8], interval: std::time::Duration) -> Result<Vec<NetworkInfo>> {
+
+    let mut networks:Vec<NetworkInfo> = vec![];
+    let current_channel = 0; //TODO: fix get_current_channel
+    //read time 
+    let init_time = std::time::Instant::now();
+    while init_time.elapsed() <= interval {
+        let frame_offset = frame[FRAME_HEADER_LENGTH] as usize; 
+        let pkt;
+        if frame_offset < frame.len(){
+            pkt = libwifi::parse_frame(&frame[frame_offset..]);
+        }else{
+            pkt = Err(libwifi::error::Error::UnhandledProtocol("unknown message".to_owned()));
+        }
+
+        if pkt.is_err() {
             eprintln!("failed to parse frame: {:?}",frame); //TODO: consider log error differently
             continue;
         }
@@ -324,7 +374,8 @@ pub fn list_networks(iface: &str, interval: std::time::Duration) -> Result<Vec<N
                     bssid: bssid,
                     signal_strength: signal,
                     ssid: ssid.clone(),
-                    channel:current_channel
+                    channel: current_channel,
+                    clients: vec![],
                 });
             }
         }
@@ -333,6 +384,25 @@ pub fn list_networks(iface: &str, interval: std::time::Duration) -> Result<Vec<N
     //return detected networks
     networks = networks.into_iter().unique_by(|i| i.bssid).collect::<Vec<_>>();
     Ok(networks)
+}
+
+
+//TODO: REMOVE THIS
+pub fn get_next_wpa_frame(iface: &str)-> std::io::Result<Frame>{
+    //get interface channel
+    let mut rx = wlan::get_recv_channel(iface)?;
+    //read next frame
+    let frame = rx.next()?;
+    //parse frame
+    let frame_offset = frame[FRAME_HEADER_LENGTH] as usize; 
+    let pkt;
+    if frame_offset < frame.len(){
+        pkt = libwifi::parse_frame(&frame[frame_offset..]);
+        if let Ok(pkt) = pkt {
+            return Ok(pkt);
+        }
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"))
 }
 
 pub fn list_clients(iface: &str, ssid: &str) -> std::io::Result<()> {
