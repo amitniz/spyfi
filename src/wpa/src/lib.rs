@@ -2,7 +2,7 @@
 //! `wpa` contains functions of the tool that communicate with other devices. 
 //! It can capture packets from the 4-Way Handshake process and send 
 //! de-authentication to other BSSIDs.
-use std::{io::Result, collections::HashMap};
+use std::{io::Result,convert::TryFrom, collections::HashMap};
 use itertools::Itertools;
 use libwifi::{Frame, Addresses};
 use std::io::Error;
@@ -13,7 +13,6 @@ use aux;
 use pcap;
 use wlan;
 use crypto;
-
 
 //PACKET PARSING POSITIONS
 const SIGNAL_POS: usize = 30;
@@ -27,12 +26,50 @@ const EAPOL_MSG_2: u16 = 0x10a;
 const EAPOL_MSG_3: u16 = 0x13ca;
 const EAPOL_MSG_4: u16 = 0x30a;
 
-/* TODO:
-*  - channel sweeping.
-*  - print ssids from different channels.
-*  - print clients of a network.
-*  - deauth.
-*/
+// ---------------------------- Macros ----------------------------------------
+
+// simple macro for implementing TryFrom Frame variants to NetworkInfo
+macro_rules! impl_try_from {
+    ($source:ty) => {
+        impl TryFrom<$source> for NetworkInfo {
+            type Error = &'static str;
+
+            fn try_from(value: $source) -> std::result::Result<Self, Self::Error> {
+                // Conversion logic from $source to $target
+                const ERROR_MSG: &'static str = "cannot convert this frame";
+
+                let ssid: String = value.station_info.ssid.clone().ok_or_else(||ERROR_MSG)?;
+                let bssid: [u8;6] = value.bssid().ok_or_else(||ERROR_MSG)?.0;
+                let channel: Option<u8> = None;
+                let signal_strength: Option<i8> = None;
+
+                // determine if the client is the sender or the reciever
+                let client = match aux::compare_arrays(&bssid, &value.dest().0){
+                    true => { value.src().ok_or_else(||ERROR_MSG)?.0 },
+                    false => { value.dest().0 }
+                };
+                
+                let clients: Vec<[u8;6]>;
+                // make sure client is not broadcast
+                if !aux::compare_arrays(&client,&[0xff,0xff,0xff,0xff,0xff,0xff]){
+                    clients = vec![client];
+                }else{
+                    clients = vec![];
+                }
+
+                Ok(
+                    NetworkInfo{
+                    ssid,
+                    bssid,
+                    channel,
+                    signal_strength,
+                    clients
+                    }
+                )
+            }
+        }            
+    };
+}
 // --------------------------------- Structs ----------------------------------
 
 /// contains information about a network
@@ -49,8 +86,8 @@ pub struct NetworkInfo {
     pub bssid: [u8; 6],
     //TODO: add WPA Protocol
     pub ssid: String,
-    pub channel: u8,
-    pub signal_strength: i8,
+    pub channel: Option<u8>,
+    pub signal_strength: Option<i8>,
     pub clients: Vec<[u8;6]>,
 }
 
@@ -105,15 +142,6 @@ impl Handshake{
 
 }
 
-impl NetworkInfo{
-    pub fn update(&mut self,other: &mut NetworkInfo){
-            assert_eq!(self.ssid,other.ssid);//TODO: replace with result or something
-            self.channel = other.channel;
-            self.signal_strength = other.signal_strength;
-            self.clients.append(other.clients.as_mut());
-    }
-}
-
 impl fmt::Display for Handshake{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f,"- ssid:{}\n- bssid: {}\n- client: {}\n- ANONCE: {}\n- SNONCE: {}\n- MIC: {}\n- MIC MSG: {}\n\n",
@@ -121,16 +149,67 @@ impl fmt::Display for Handshake{
     }
 }
 
-
-impl fmt::Display for NetworkInfo{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f,"{}\n-----------\n- channel: {}\n- signal: {}\n- bssid: {}",self.ssid,self.channel,self.signal_strength,hex::encode(self.bssid))
+impl NetworkInfo{
+    pub fn update(&mut self,other: &mut NetworkInfo){
+            assert_eq!(self.ssid,other.ssid);//TODO: replace with result or something
+            self.channel = other.channel;
+            self.signal_strength = other.signal_strength;
+            self.clients.append(other.clients.as_mut());
+            //remove duplications
+            self.clients.sort();
+            self.clients.dedup();
+        
     }
 }
 
+//TODO:update this
+impl fmt::Display for NetworkInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f,"{} | {} | {} | {} | ",
+            self.ssid,
+            self.channel.unwrap_or(0),
+            self.signal_strength.unwrap_or(0),
+            hex::encode(self.bssid)
+        );
+        for client in &self.clients{
+            write!(f,"{}\n", hex::encode(client));
+        }
+        Ok(())
+    }
+}
 
-const MAX_CHANNEL: u8 = 8;
-const PACKET_PER_CHANNEL: usize = 30;
+impl_try_from!(libwifi::frame::Beacon);
+impl_try_from!(libwifi::frame::ProbeRequest);
+impl_try_from!(libwifi::frame::ProbeResponse);
+impl_try_from!(libwifi::frame::AssociationRequest);
+impl_try_from!(libwifi::frame::AssociationResponse);
+
+impl TryFrom<libwifi::Frame> for NetworkInfo{
+    type Error = &'static str;
+    fn try_from(value: libwifi::Frame) -> std::result::Result<Self, Self::Error> {
+       match value{
+            libwifi::Frame::Beacon(beacon) =>{
+                Ok(beacon.try_into()?)
+            },
+            libwifi::Frame::ProbeRequest(probe_req) =>{
+                Ok(probe_req.try_into()?)
+            },
+            libwifi::Frame::ProbeResponse(probe_res) =>{
+                Ok(probe_res.try_into()?)
+            },
+            libwifi::Frame::AssociationRequest(assoc_req) =>{
+                Ok(assoc_req.try_into()?)
+            },
+            libwifi::Frame::AssociationResponse(assoc_res) =>{
+                Ok(assoc_res.try_into()?)
+            },
+            _ => {
+                Err("cannot convert frame")
+            }
+
+        } 
+    }
+}
 
 // --------------------------- Public Functions -------------------------------
 
@@ -287,23 +366,21 @@ pub fn send_deauth(iface: &str, bssid: &str, target: Option<String>) -> std::io:
     Ok(())
 }
 
+//TODO: description
+pub fn listen_and_collect(iface: &str, interval: std::time::Duration) -> Result<HashMap<String,NetworkInfo>> {
 
-/// Scan nearby networks
-/// ## Description
-//TODO: description, add type of WPA
-pub fn list_networks(iface: &str, interval: std::time::Duration) -> Result<HashMap<String,NetworkInfo>> {
+    let mut networks : HashMap<String,NetworkInfo> = HashMap::new();
+    let current_channel = wlan::get_iface_channel(iface)?;
 
-    let mut networks:HashMap<String,NetworkInfo> = HashMap::new();
-    let current_channel = 0; //TODO: fix get_current_channel
     // get rx channel to the given interface
     let mut rx = wlan::get_recv_channel(iface)?;
     //read time 
     let init_time = std::time::Instant::now();
 
-
-    //TODO: convert unwrap to ?
     while init_time.elapsed() <= interval {
+
         let frame;
+        //try to read next frame
         match rx.next() {
             Ok(data) => {
                 frame = data;
@@ -312,101 +389,38 @@ pub fn list_networks(iface: &str, interval: std::time::Duration) -> Result<HashM
                 continue;
             } //timeout
         }
+        
+        //parse frame
+        let parsed_frame;
         let frame_offset = frame[FRAME_HEADER_LENGTH] as usize; 
-        let pkt;
         if frame_offset < frame.len(){
-            pkt = libwifi::parse_frame(&frame[frame_offset..]);
+            parsed_frame = libwifi::parse_frame(&frame[frame_offset..]);
         }else{
-            pkt = Err(libwifi::error::Error::UnhandledProtocol("unknown message".to_owned()));
+            parsed_frame = Err(libwifi::error::Error::UnhandledProtocol("unknown message".to_owned()));
         }
 
-        if pkt.is_err() {
-            continue;
-        }
-        if let Frame::Beacon(beacon) = pkt.unwrap() {
-            if let Some(ssid) = beacon.station_info.ssid {
+        if parsed_frame.is_err() {continue;} //TODO: try to parse better. might be other versions beside WPA2
 
-                let bssid = beacon.header.bssid().unwrap().0; //extract bssid
-                let signal = frame[SIGNAL_POS] as i8; //extract signal
-    
-                let mut network = NetworkInfo{
-                    bssid: bssid,
-                    signal_strength: signal,
-                    ssid: ssid.clone(),
-                    channel:current_channel,
-                    clients: vec![],
-
-                };
+        // extract data
+        let signal = frame[SIGNAL_POS] as i8; //extract signal
+        let network: std::result::Result<NetworkInfo, &str> = parsed_frame.unwrap().try_into();
+        match network{
+            Ok(net) =>{
+                let mut network: NetworkInfo = net.clone();
+                network.channel = Some(current_channel);
+                network.signal_strength = Some(signal);
                 networks.entry(network.ssid.clone())
                     .and_modify(|e|  e.update(&mut network))
                     .or_insert(network);
+            },
+            Err(_) =>{
+                continue;
+                
             }
         }
     }
     Ok(networks)
 }
-pub fn list_networks_new(frame: &[u8], interval: std::time::Duration) -> Result<Vec<NetworkInfo>> {
 
-    let mut networks:Vec<NetworkInfo> = vec![];
-    let current_channel = 0; //TODO: fix get_current_channel
-    //read time 
-    let init_time = std::time::Instant::now();
-    while init_time.elapsed() <= interval {
-        let frame_offset = frame[FRAME_HEADER_LENGTH] as usize; 
-        let pkt;
-        if frame_offset < frame.len(){
-            pkt = libwifi::parse_frame(&frame[frame_offset..]);
-        }else{
-            pkt = Err(libwifi::error::Error::UnhandledProtocol("unknown message".to_owned()));
-        }
-
-        if pkt.is_err() {
-            eprintln!("failed to parse frame: {:?}",frame); //TODO: consider log error differently
-            continue;
-        }
-        if let Frame::Beacon(beacon) = pkt.unwrap() {
-            if let Some(ssid) = beacon.station_info.ssid {
-
-                let bssid = beacon.header.bssid().unwrap().0; //extract bssid
-                let signal = frame[SIGNAL_POS] as i8; //extract signal
-                networks.push(
-                    NetworkInfo{
-                    bssid: bssid,
-                    signal_strength: signal,
-                    ssid: ssid.clone(),
-                    channel: current_channel,
-                    clients: vec![],
-                });
-            }
-        }
-    }
-    //remove duplicates
-    //return detected networks
-    networks = networks.into_iter().unique_by(|i| i.bssid).collect::<Vec<_>>();
-    Ok(networks)
-}
-
-
-//TODO: REMOVE THIS
-pub fn get_next_wpa_frame(iface: &str)-> std::io::Result<Frame>{
-    //get interface channel
-    let mut rx = wlan::get_recv_channel(iface)?;
-    //read next frame
-    let frame = rx.next()?;
-    //parse frame
-    let frame_offset = frame[FRAME_HEADER_LENGTH] as usize; 
-    let pkt;
-    if frame_offset < frame.len(){
-        pkt = libwifi::parse_frame(&frame[frame_offset..]);
-        if let Ok(pkt) = pkt {
-            return Ok(pkt);
-        }
-    }
-    Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout"))
-}
-
-pub fn list_clients(iface: &str, ssid: &str) -> std::io::Result<()> {
-    todo!();
-}
 
 

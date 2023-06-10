@@ -1,6 +1,6 @@
 use core::time;
 use std::collections::HashMap;
-use std::sync::mpsc::{Sender,Receiver, channel};
+use std::sync::mpsc::{Sender,Receiver};
 use wpa::NetworkInfo;
 
 
@@ -37,7 +37,7 @@ impl MonitorThread{
 
     pub fn run(&mut self){
         loop{
-            match wpa::list_networks(&self.iface, time::Duration::from_secs(1)){
+            match wpa::listen_and_collect(&self.iface, time::Duration::from_secs(1)){
                 Ok(networks) =>{
                     for (ssid, mut network) in networks.into_iter(){
                         self.networks.entry(ssid)

@@ -28,11 +28,12 @@ int c_get_channel(char *iface){
   int skfd = create_socket();
   if(skfd < 0) return -1;
   struct iwreq wrq;
-  wrq.u.freq.m = 0;
-  wrq.u.freq.e = 0;
+  memset(&wrq, 0, sizeof(struct iwreq));
   strncpy(wrq.ifr_name,iface,IFNAMSIZ-1);
-  printf("channel m: %d e: %d\n",wrq.u.freq.m, wrq.u.freq.e);
-  return ioctl(skfd,SIOCGIWFREQ,&wrq);
+  ioctl(skfd,SIOCGIWFREQ,&wrq);
+  unsigned int freq = wrq.u.freq.m;
+  unsigned short channel = (freq - 2407) / 5;
+  return channel;
 
 }
 int c_switch_channel(char *iface, unsigned int channel){

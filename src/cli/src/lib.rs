@@ -3,10 +3,10 @@
 //!  find nearest networks and perform actions such as disconnect them 
 //! from the WiFi.
 
-use std::io::{BufRead,BufReader};
+use std::{io::{BufRead,BufReader}, collections::HashMap};
 use clap::{Parser, ValueEnum, Args, Subcommand};
 use wlan;
-use wpa;
+use wpa::{self, NetworkInfo};
 use crypto;
 use pcap;
 use hex::encode;
@@ -61,6 +61,9 @@ struct Utility{
     /// set capturing channel
     #[arg(short, long, requires = "iface", value_parser = clap::value_parser!(u8).range(0..18))]
     channel: Option<u8>,
+    
+    #[arg(long, requires = "iface")]
+    ch: bool,
 
 }
 
@@ -75,6 +78,10 @@ impl Utility{
         if let Some(channel) = self.channel {
             wlan::switch_iface_channel(self.iface.as_ref().unwrap(), channel).unwrap();
             println!("switched to channel {}", channel);
+        }
+
+        if self.ch{
+            println!("{}",wlan::get_iface_channel(self.iface.as_ref().unwrap()).unwrap());
         }
 
         if let Some(mode) = self.mode {
@@ -123,8 +130,8 @@ struct Enumerate{
     #[arg(short,long,group="enumerate")]
     listen: ListenMode,
 
-   // #[arg(short,long,id="BPF Filter",group="enumerate",requires="outputfile")]
-   // capture: Option<String>,
+    #[arg(short,long,id="BPF Filter",group="enumerate",requires="outputfile")]
+    capture: Option<String>,
 
     /// name of the wlan interface
     #[arg(short, long)]
@@ -164,22 +171,31 @@ impl Enumerate{
                 let interval = std::time::Duration::from_millis(INTERVAL);
                 let timeout = std::time::Duration::from_secs(self.timeout as u64);
                 let init_time = std::time::Instant::now();
+                let mut channel: u8 = 1;
+                let mut networks:HashMap<String,NetworkInfo> = HashMap::new();
                 while init_time.elapsed() <= timeout {
-                    let stations = wpa::list_networks(iface,interval);
+                    if self.sweep{
+                        wlan::switch_iface_channel(iface, channel);
+                        channel = aux::modulos((channel+1) as i32,(MAX_CHANNEL+1) as i32) as u8;
+                    }
+                    let stations = wpa::listen_and_collect(iface,interval);
                     match stations {
                         Ok(stations) =>{
-                            for (_,station) in stations{
-                                println!("{}\n\n",station);
-                            }
+                            for (_,mut station) in stations{
+                                networks.entry(station.ssid.clone())
+                                    .and_modify(|e|  e.update(&mut station))
+                                    .or_insert(station);
+                            } 
                         },
                         Err(e) =>{
                             todo!("handle errors");
                         }
                     }
+                    networks_pretty_print(&networks);
                 }
             },
             ListenMode::Clients =>{
-                todo!("not implemented");
+                unimplemented!();
             }
         }
 
@@ -346,4 +362,36 @@ pub fn run() {
         }
         
     }
+}
+
+
+fn networks_pretty_print(networks:&HashMap<String,NetworkInfo>){
+    //hide cursor
+    println!("\x1b[25l");
+    println!(" {:-^68} ","Networks");
+    println!("|     SSID     | CHANNEL |       BSSID      | SIGNAL |    CLIENTS    |");
+    let mut lines_num = 4; //tracks how many lines were print
+    for (_,station) in networks{
+        lines_num += 2;
+        println!(" --------------------------------------------------------------------");
+        print!("|{:^14}|{:^9}|{:^18}|{:^8}|",
+            station.ssid, 
+            station.channel.unwrap_or(0),
+            hex::encode(station.bssid),
+            station.signal_strength.unwrap_or(0),
+        );
+
+        if !station.clients.is_empty(){
+            lines_num += station.clients.len()-1;
+            println!("{:^15}|",hex::encode(station.clients[0]));
+            for client in &station.clients[1..]{
+                println!("{:>67}  |",hex::encode(client));
+            }
+        }else{
+            println!("               |");
+        }
+    }
+    println!(" --------------------------------------------------------------------");
+    print!("\x1b[{}A",lines_num);
+    //move up the cursor
 }

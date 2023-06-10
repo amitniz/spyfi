@@ -1,10 +1,9 @@
 //! # crypto
 //! `crypto` contains all the key generators and cryptographic algorithms.
-use pbkdf2::{pbkdf2_hmac,pbkdf2_hmac_array};
+use pbkdf2::pbkdf2_hmac_array;
 use sha1::Sha1;
 use hmac::{Hmac, Mac};
 use concat_arrays::concat_arrays;
-use hex::FromHex;
 
 const ITERATIONS: u32 = 4096;
 
@@ -65,7 +64,7 @@ pub fn mic_data(data:&[u8;121]) -> [u8;121]{
 }
 
 
-/// Digest of a message using HMAC Sha1
+/// Digest a message using HMAC Sha1
 /// ## Description
 /// Return digest of a message for given secret key and digest.
 /// 
@@ -228,11 +227,19 @@ mod tests{
     use hex::ToHex;
     #[test]
     fn test_concatings_arrays(){
-        let res: [u8;12] = concat_arrays!([11,22,33,44,55,66],[22,33,44,55,66,77]);
+        let res: [u8;12] = concat_arrays!(
+            [11,22,33,44,55,66],
+            [22,33,44,55,66,77]
+        );
         assert_eq!(res,[11,22,33,44,55,66,22,33,44,55,66,77]);
         println!("[+] passed check 1: concat([11,22,33,44,55,66],[22,33,44,55,66,77])");
 
-        assert_eq!(concat_arrays!([11,22,33,44,55,66],[22,33,44,55,66,77],[33,44,55,66,77,88]),[11,22,33,44,55,66,22,33,44,55,66,77,33,44,55,66,77,88]);
+        assert_eq!(concat_arrays!(
+            [11,22,33,44,55,66],
+            [22,33,44,55,66,77],
+            [33,44,55,66,77,88]),
+            [11,22,33,44,55,66,22,33,44,55,66,77,33,44,55,66,77,88]
+        );
         println!("[+] passed check 2: concat([11,22,33,44,55,66],[22,33,44,55,66,77],[33,44,55,66,77,88])"); 
     }
     
