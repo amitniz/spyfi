@@ -364,34 +364,36 @@ pub fn run() {
     }
 }
 
+// ----------------------------------- Aux ------------------------------------
+
 
 fn networks_pretty_print(networks:&HashMap<String,NetworkInfo>){
     //hide cursor
     println!("\x1b[25l");
-    println!(" {:-^68} ","Networks");
+    println!(" {:-^68} "," Networks ");
     println!("|     SSID     | CHANNEL |       BSSID      | SIGNAL |    CLIENTS    |");
     let mut lines_num = 4; //tracks how many lines were print
     for (_,station) in networks{
-        lines_num += 2;
         println!(" --------------------------------------------------------------------");
         print!("|{:^14}|{:^9}|{:^18}|{:^8}|",
             station.ssid, 
             station.channel.unwrap_or(0),
             hex::encode(station.bssid),
-            station.signal_strength.unwrap_or(0),
+            format!("{} dBm",station.signal_strength.unwrap_or(0)),
         );
+        lines_num += 2;
 
         if !station.clients.is_empty(){
-            lines_num += station.clients.len()-1;
             println!("{:^15}|",hex::encode(station.clients[0]));
             for client in &station.clients[1..]{
                 println!("{:>67}  |",hex::encode(client));
             }
+            lines_num += station.clients.len()-1;
         }else{
             println!("               |");
         }
     }
     println!(" --------------------------------------------------------------------");
-    print!("\x1b[{}A",lines_num);
     //move up the cursor
+    print!("\x1b[{}A",lines_num);
 }

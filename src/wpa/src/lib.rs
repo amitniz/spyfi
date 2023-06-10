@@ -37,8 +37,13 @@ macro_rules! impl_try_from {
             fn try_from(value: $source) -> std::result::Result<Self, Self::Error> {
                 // Conversion logic from $source to $target
                 const ERROR_MSG: &'static str = "cannot convert this frame";
+                
+                //handle wildcard ssid
+                let ssid: String = match value.station_info.ssid.clone().ok_or_else(||ERROR_MSG)?.as_str(){
+                    "" =>{ "WILDCARD".to_owned() },
+                    str =>{ str.to_owned() }
+                };
 
-                let ssid: String = value.station_info.ssid.clone().ok_or_else(||ERROR_MSG)?;
                 let bssid: [u8;6] = value.bssid().ok_or_else(||ERROR_MSG)?.0;
                 let channel: Option<u8> = None;
                 let signal_strength: Option<i8> = None;
