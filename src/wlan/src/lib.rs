@@ -1,6 +1,11 @@
 //! # wlan
-//! `wlan` provides the connection with the interface.
-//! It allows you to switch channels, modes and more.
+//! A wireless LAN (WLAN) is a wireless computer network that links two or more 
+//! devices using wireless communication to form a local area network (LAN) 
+//! within a limited area. Wireless LANs based on the IEEE 802.11 standards are 
+//! the most widely used computer networks in the world and the tool focuses on them.
+//! 
+//! `wlan` provides the connection with the interface. It allows switching channels, 
+//! changing interface's mode and more.
 use std::ffi::CString;
 
 use pnet_datalink::{self, Channel, Config, DataLinkReceiver,DataLinkSender, NetworkInterface};
@@ -11,7 +16,14 @@ include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 /// Information on all interfaces 
 /// ## Description
 /// Presents a list of all the available interfaces.
-pub fn list_interfaces() ->Vec<String> {
+/// ## Example
+/// **Basic Usage:**
+/// ```
+///     for iface in wlan::list_interfaces() {
+///         println!("{iface}");
+///     }
+/// ```
+pub fn list_interfaces() -> Vec<String> {
     pnet_datalink::interfaces().iter().map(|i|i.name.clone()).collect()
 }
 
@@ -71,7 +83,14 @@ pub fn get_recv_channel(iface: &str) -> std::io::Result<Box<dyn DataLinkReceiver
 
 /// Changes the channel of the interface
 /// ## Description
-/// Changes the channel that the interface listens to.
+/// Changes the channel that the interface is currently on.
+/// ## Example
+/// **Basic Usage:**
+/// ```
+///     wlan::switch_iface_channel("wlan0", 5);
+///     let channel = wlan::get_iface_channel("wlan0").unwrap();
+///     assert_eq!(5, channel);
+/// ```
 pub fn switch_iface_channel(iface: &str, channel: u8) -> std::io::Result<()> {
     unsafe {
         let iface_cstr = CString::new(iface).unwrap();
@@ -85,10 +104,15 @@ pub fn switch_iface_channel(iface: &str, channel: u8) -> std::io::Result<()> {
 
 
 
-//TODO: the c code is broken
 /// Gets the channel of the interface
 /// ## Description
-/// Gets the channel that the interface listens to.
+/// Gets the channel that the interface is currently on.
+/// ## Example
+/// **Basic Usage:**
+/// ```
+///     let current_channel = wlan::get_iface_channel("eth0").unwrap();
+///     println!("{}", current_channel);
+/// ```
 pub fn get_iface_channel(iface: &str) -> std::io::Result<u8> {
     unsafe {
         let iface_cstr = CString::new(iface).unwrap();
@@ -103,7 +127,15 @@ pub fn get_iface_channel(iface: &str) -> std::io::Result<u8> {
 
 /// Controls the power of the interface
 /// ## Description
-/// Toggles the interface between the power on and off.
+/// Toggles the interface between power on and off.
+/// ## Example
+/// **Basic Usage:**
+/// ```
+///     // toggle off
+///     wlan::toggle_power("wlan1", false);
+///     // toggle on
+///     wlan::toggle_power("wlan1", true);
+/// ```
 pub fn toggle_power(iface: &str, state: bool) -> std::io::Result<()> {
     unsafe {
         let iface_cstr = CString::new(iface).unwrap();
@@ -118,6 +150,12 @@ pub fn toggle_power(iface: &str, state: bool) -> std::io::Result<()> {
 /// Changes the mode of the interface
 /// ## Description
 /// Switches the mode of the interface to monitor.
+/// ## Example
+/// **Basic Usage:**
+/// ```
+///     //turn monitor on
+///     wlan::toggle_monitor_mode("wlan1", true);
+/// ```
 pub fn toggle_monitor_mode(iface: &str, state: bool) -> std::io::Result<()> {
     unsafe {
         let iface_cstr = CString::new(iface).unwrap();
@@ -131,7 +169,12 @@ pub fn toggle_monitor_mode(iface: &str, state: bool) -> std::io::Result<()> {
 
 /// Gets the current interface
 /// ## Description
-/// Gets the current interface that the network uses.
+/// Gets the current interface that the device uses.
+/// ## Example
+/// **Basic Usage:**
+/// ```
+///     let iface = wlan::get_interface("eth0");
+/// ```
 pub fn get_interface(iface: &str) -> Option<NetworkInterface> {
     let interfaces = pnet_datalink::interfaces();
     let interface = interfaces.iter().find(|i| i.name == iface);
@@ -141,6 +184,11 @@ pub fn get_interface(iface: &str) -> Option<NetworkInterface> {
 /// Changes the state of the interface
 /// ## Description
 /// Switches the mode of the interface to monitor or managed according to the arguments.
+/// ## Example
+/// **Basic Usage:**
+/// ```
+///     wlan::toggle_monitor_state("wlan1", true);
+/// ```
 pub fn toggle_monitor_state(iface: &str, mode: bool) -> std::io::Result<()> {
     toggle_power(&iface, false)?;
     toggle_monitor_mode(&iface, mode)?;
