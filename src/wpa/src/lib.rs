@@ -228,6 +228,13 @@ impl TryFrom<libwifi::Frame> for NetworkInfo{
 /// The function receives interface, PCAP file, ssid and bssid and scans for 4 EAPOL 
 /// packets of the given station and client. Then extract the relevant data from each 
 /// packet (A Nonce, B Nonce, MIC, MIC message), and returns it as a struct.
+/// ## Example
+/// **Basic usage:**
+/// ```
+///     let pcap: Result<pcap::Capture<pcap::Offline>, pcap::Error> =
+///                                       pcap::Capture::from_file("pcap_file.pcap");
+///     let handshake = wpa::get_hs_from_file(pcap.unwrap(), "test", "AABBCCDDEEFF");
+/// ```
 pub fn get_hs_from_file(mut pcap: pcap::Capture<pcap::Offline>,ssid: &str, bssid: &str) -> std::io::Result<Handshake> {
     let mut hs_msgs: [Option<libwifi::frame::QosData>; 4] = Default::default();
     loop { //TODO: replace with timeout
@@ -294,6 +301,11 @@ pub fn get_hs_from_file(mut pcap: pcap::Capture<pcap::Offline>,ssid: &str, bssid
 /// The function receives interface, ssid and bssid and listens until capturing 4 EAPOL 
 /// packets of the given station and client. Then extract the relevant data from each 
 /// packet (A Nonce, B Nonce, MIC, MIC message), and returns it as a struct.
+/// ## Example
+/// **Basic usage:**
+/// ```
+///     let handshake = wpa::get_hs("wlan0", "test", "AABBCCDDEEFF");
+/// ```
 pub fn get_hs(iface: &str,ssid: &str, bssid: &str) -> std::io::Result<Handshake> {
     // get recv channel to the interface
     let mut rx = wlan::get_recv_channel(iface)?;

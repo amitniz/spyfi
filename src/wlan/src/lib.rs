@@ -30,6 +30,7 @@ pub fn list_interfaces() -> Vec<String> {
 /// Information on the interface
 /// ## Description
 /// Presents information on a given interface.
+// TODO: unused? maybe delete
 pub fn iface_info(iface: &str) -> std::io::Result<()> {
     let iface = get_interface(iface).ok_or(std::io::Error::last_os_error())?;
     println!("{}", iface);
@@ -39,6 +40,11 @@ pub fn iface_info(iface: &str) -> std::io::Result<()> {
 /// Finds TX channel
 /// ## Description
 /// Finds the channel that the interface listens on to send data.
+/// ## Example
+/// **Basic Usage:**
+/// ```
+///     let tx = wlan::get_send_channel("wlan0");
+/// ```
 pub fn get_send_channel(iface: &str) -> std::io::Result<Box<dyn DataLinkSender>> {
 
     // get interface
@@ -62,6 +68,11 @@ pub fn get_send_channel(iface: &str) -> std::io::Result<Box<dyn DataLinkSender>>
 /// Finds RX channel
 /// ## Description
 /// Finds the channel that the interface listens on to receive data.
+/// ## Example
+/// **Basic Usage:**
+/// ```
+///     let rx = wlan::get_recv_channel("wlan0");
+/// ```
 pub fn get_recv_channel(iface: &str) -> std::io::Result<Box<dyn DataLinkReceiver>> {
     // get interface
     let iface = get_interface(iface).ok_or(Error::last_os_error())?;
@@ -153,7 +164,7 @@ pub fn toggle_power(iface: &str, state: bool) -> std::io::Result<()> {
 /// ## Example
 /// **Basic Usage:**
 /// ```
-///     //turn monitor on
+///     // turn monitor on
 ///     wlan::toggle_monitor_mode("wlan1", true);
 /// ```
 pub fn toggle_monitor_mode(iface: &str, state: bool) -> std::io::Result<()> {
@@ -203,27 +214,27 @@ mod tests {
     #[test]
     fn check_bindings() {
         unsafe {
-            //toggle off
+            // toggle off
             assert_eq!(c_toggle_power("wlan1".as_ptr() as *mut i8, false), 0);
-            //toggle on
+            // toggle on
             assert_eq!(c_toggle_power("wlan1".as_ptr() as *mut i8, true), 0);
         }
     }
     #[test]
     fn check_power() {
-        //toggle off
+        // toggle off
         toggle_power("wlan1", false).unwrap();
-        //toggle on
+        // toggle on
         toggle_power("wlan1", true).unwrap();
     }
 
     #[test]
     fn switch_to_monitor() {
-        //toggle off
+        // toggle off
         toggle_power("wlan1", false).unwrap();
-        //turn monitor on
+        // turn monitor on
         toggle_monitor_mode("wlan1", true).unwrap();
-        //toggle on
+        // toggle on
         toggle_power("wlan1", true).unwrap();
     }
 }
