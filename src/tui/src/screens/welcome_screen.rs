@@ -1,9 +1,10 @@
+use std::collections::HashMap;
+
 use crate::GlobalConfigs;
-
+use crate::create_list;
 use super::*;
-use crossterm::style::style;
 use wlan;
-
+use wpa::NetworkInfo;
 const LOGO: [&'static str; 7] = [
 
     "███████╗██████╗ ██╗   ██╗███████╗██╗",
@@ -17,14 +18,18 @@ const LOGO: [&'static str; 7] = [
 
 pub struct WelcomeScreen{
     iface_list: StatefulList<String>,
-    theme: colorscheme::Theme,
+    theme: Theme,
 }
 
 impl Default for WelcomeScreen{
     fn default() -> Self {
         WelcomeScreen{
             iface_list: StatefulList::new(wlan::list_interfaces()),
-            theme: colorscheme::Theme::default(),
+            theme: GlobalConfigs::get_instance().theme
+                .read()
+                .unwrap()
+                .clone()
+            ,
         }
     }
 }
@@ -51,12 +56,11 @@ impl<B:Backend> Screen<B> for WelcomeScreen{
         });
 
         // create the blocks
-        let logo_block = self.create_logo_block();
-        let ifaces_block = self.create_ifaces_block();
+        self.create_logo_block(f, chunks[0]);
+        let ifaces_block = create_list!(self," Interfaces ", self.iface_list.items);
         let footer_block = self.create_footer_block();
         
         // render the blocks
-        f.render_widget(logo_block, chunks[0]);
         f.render_stateful_widget(ifaces_block, chunks[1], &mut self.iface_list.state.clone());
         f.render_widget(footer_block, chunks[2]);
     }
@@ -72,16 +76,13 @@ impl<B:Backend> Screen<B> for WelcomeScreen{
         true // no need to handle the key globaly
     }
 
-    fn set_theme(&mut self, theme:Theme) {
-        self.theme = theme;
+    fn set_theme(&mut self, theme: &Theme) {
+        self.theme = theme.clone();
     }
 
-    fn theme_name(&mut self) -> &str {
-        &self.theme.name
-    }
-
-    fn update(&mut self,ipc_msg:monitor::IPCMessage) {
+    fn update(&mut self,ipc_msg:ScreenIPC) -> Option<ScreenIPC>{
         //do nothing
+        None
     }
 
 }
@@ -92,31 +93,25 @@ impl WelcomeScreen{
         if let Some(selected_indx) = self.iface_list.state.selected(){
             let selected_iface = self.iface_list.items[selected_indx].clone();
             GlobalConfigs::get_instance().set_iface(&selected_iface);
+            let channel = wlan::get_iface_channel(&selected_iface).unwrap();
+            //switch to monitor mode
+            wlan::toggle_monitor_state(&selected_iface, true);
+            GlobalConfigs::get_instance().set_mode("monitor");
+            GlobalConfigs::get_instance().set_channel(&format!("{}",channel));
         }
     }
 
-    fn create_logo_block(&self) -> Paragraph{
-
+    fn create_logo_block<B>(&self,f:&mut Frame<B>,area: Rect) where B:Backend {
+    
         let welcome_text:Vec<Spans> = LOGO.into_iter().map(|s|Spans::from(vec![Span::raw(s)])).collect();
-        Paragraph::new(welcome_text)
+        let logo = Paragraph::new(welcome_text)
             .block(Block::default())
             .alignment(tui::layout::Alignment::Center)
-            .style(Style::default().fg(self.theme.logo))
+            .style(Style::default().fg(self.theme.logo));
+
+        f.render_widget(logo,area);
     }
 
-    fn create_ifaces_block<'f>(&'f self) -> List{
-
-        List::new(self.iface_list.items.iter().map(|i|{ListItem::new(format!(" 🍕 {} ",i))}).collect::<Vec<ListItem>>())
-            .block(
-                Block::default()
-                    .title(" Interfaces ")
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(self.theme.fg).bg(self.theme.bg))
-            )
-            .style(Style::default().bg(self.theme.bg2).fg(self.theme.fg2))
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(self.theme.fg).bg(self.theme.highlight))
-
-    }
 
     fn create_footer_block(&self) -> Paragraph{
 

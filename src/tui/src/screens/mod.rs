@@ -1,6 +1,9 @@
-use crossterm::event::{KeyEvent,KeyCode};
-use super::monitor;
+use std::collections::HashMap;
 
+use crossterm::event::{KeyEvent,KeyCode};
+use wpa::NetworkInfo;
+use super::items::{self,Item};
+use aux::IPCMessage;
 use tui::{
     backend::Backend,
     layout::{Rect, Constraint, Direction, Layout},
@@ -13,14 +16,15 @@ use tui::{
 pub mod colorscheme;
 use colorscheme::Theme;
 
+pub type ScreenIPC = IPCMessage<HashMap<String,NetworkInfo>>;
+
 pub trait Screen<B:Backend>{
     /// Sets a layout for a given frame    
     fn set_layout(&mut self, f: &mut Frame<B>);
     /// handle keyboard event. If uncatched return false
     fn handle_input(&mut self, key:KeyEvent) -> bool;
-    fn set_theme(&mut self, theme:Theme);
-    fn theme_name(&mut self) -> &str;
-    fn update(&mut self,ipc_msg:monitor::IPCMessage);
+    fn update(&mut self,ipc_msg:  ScreenIPC) -> Option<ScreenIPC>;
+    fn set_theme(&mut self, theme: &Theme);
 }
 
 // ------------------------------ import screens ------------------------------
@@ -77,3 +81,42 @@ impl<T> StatefulList<T>{
     }
 
 }
+
+#[derive(Default)]
+pub struct Panes{
+    selected: usize,
+    panes: Vec<String>,
+}
+
+impl Panes{
+    //add pane, return false if exists already
+    pub fn add_pane(&mut self,name: &str) -> bool{
+        if !self.panes.contains(&name.to_owned()){
+            self.panes.push(name.to_owned());
+            return true;
+        }
+        return false;
+    }
+    
+    //remove a pane, return false if not exists
+    pub fn remove_pane(&mut self,name: &str) -> bool{
+        let init_size = self.panes.len();
+        self.panes = self.panes.iter()
+            .filter(|&i| i != &name.to_owned())
+            .map(Clone::clone)
+            .collect();
+        init_size != self.panes.len() 
+    }
+
+    pub fn selected(&self) -> String{
+        if self.panes.len() > self.selected{
+            return self.panes[self.selected].clone();
+        }
+        "".to_owned()
+    }
+
+    pub fn next(&mut self){
+        self.selected = aux::modulos((self.selected+1) as i32, self.panes.len() as i32) as usize;
+    }
+}
+

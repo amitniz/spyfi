@@ -1,34 +1,70 @@
+mod screens;
+mod items;
+mod monitor;
+
 use std::{
     io::{self, Stdout},
     error::Error,
-    sync::{RwLock,mpsc::{self, Sender, Receiver}},
-    thread::{self,Thread},
+    sync::{RwLock,mpsc},
+    thread, collections::HashMap,
 };
+use aux::{IPCMessage, IOCommand};
 use rand::Rng;
 use lazy_static::lazy_static;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{
+        self,
+        DisableMouseCapture,
+        EnableMouseCapture,
+        Event,
+        KeyCode
+    },
     execute,
-    terminal::{disable_raw_mode,enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{
+        disable_raw_mode,
+        enable_raw_mode, 
+        EnterAlternateScreen, 
+        LeaveAlternateScreen
+    },
 };
 use tui::{
     backend::CrosstermBackend,
     Terminal,
 };
 
-mod screens;
-use screens::{Screen,colorscheme};
-mod monitor;
-use monitor::MonitorThread;
 
+use screens::{Screen,colorscheme};
+use monitor::MonitorThread;
+use wpa::NetworkInfo;
+
+
+// ---------------------------------- Macros ----------------------------------
+#[macro_export]
+macro_rules! create_list {
+    ($inst: expr,$title:literal,$list:expr) => {
+        //TODO: add type check to item (should be Vec<String>)
+        List::new($list.iter().map(|i|{ListItem::new(format!(" 🍕 {} ",i))}).collect::<Vec<ListItem>>())
+            .block(
+                Block::default()
+                    .title($title)
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg($inst.theme.text).bg($inst.theme.border_bg))
+            )
+            .style(Style::default().bg($inst.theme.bg).fg($inst.theme.text))
+            .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg($inst.theme.bright_text).bg($inst.theme.highlight))
+    }
+}
+
+// -------------------------------- Static ------------------------------------
 lazy_static! {
     static ref GLOBAL_CONFIGURATIONS: GlobalConfigs = GlobalConfigs::default();
 }
 
+
+// -------------------------------- Structs -----------------------------------
 pub struct Tui{
     screen: Box<dyn Screen<CrosstermBackend<Stdout>>>,// the current screen
-    ipc_channels: Option<monitor::IPC>, //IPC channels for communicating with monitor thread
-    theme: colorscheme::Theme,
+    ipc_channels: Option<aux::IPC<HashMap<String,NetworkInfo>>>, //IPC channels for communicating with monitor thread
 }
 
 impl Tui{
@@ -37,7 +73,6 @@ impl Tui{
         Tui{
             screen:Box::new(screens::WelcomeScreen::default()),
             ipc_channels: None,
-            theme: colorscheme::Theme::default(),
         }
     }
 
@@ -56,11 +91,14 @@ impl Tui{
             if let Some(ipc) = self.ipc_channels.as_ref(){
                 if let Ok(msg) = ipc.rx.try_recv(){
                     match msg{
-                        monitor::IPCMessage::NetworkInfo(netinfo) =>{
+                        aux::IPCMessage::Message(netinfo) =>{
                             //update screen data
-                            self.screen.update(monitor::IPCMessage::NetworkInfo(netinfo));
+                            let res = self.screen.update(aux::IPCMessage::Message(netinfo));
+                            if let  Some(msg) = res{
+                                ipc.tx.send(msg);
+                            }
                         },
-                        monitor::IPCMessage::PermissionsError =>{
+                        aux::IPCMessage::PermissionsError =>{
                             //popup permissions screen
                             todo!("permissions error");
                         }
@@ -116,7 +154,7 @@ impl Tui{
     fn spawn_monitor_thread(&mut self){
         let (thread_tx,main_rx) = mpsc::channel();
         let (main_tx,thread_rx) = mpsc::channel(); 
-        self.ipc_channels = Some(monitor::IPC{
+        self.ipc_channels = Some(aux::IPC{
             rx: main_rx,
             tx: main_tx,
         });
@@ -129,40 +167,39 @@ impl Tui{
 
     fn quit(&self){
         if let Some(ipc) = self.ipc_channels.as_ref(){
-            ipc.tx.send(monitor::IPCMessage::EndCommunication);
+            ipc.tx.send(aux::IPCMessage::EndCommunication);
         }
     }
 
-
     fn randomize_theme(&mut self){
         let mut rng = rand::thread_rng();
-        let rand_int = rng.gen_range(1..7);
+        let rand_int = rng.gen_range(1..3);
+        let theme;
         match rand_int{
-            1=>{self.theme = colorscheme::Theme::eggplant();}
-            2=>{self.theme = colorscheme::Theme::jamaica();}
-            3=>{self.theme = colorscheme::Theme::megaman();}
-            4=>{self.theme = colorscheme::Theme::desert();}
-            5=>{self.theme = colorscheme::Theme::pokemon();}
-            6=>{self.theme = colorscheme::Theme::default();}
-            _=>{}
+            1=>{theme = colorscheme::Theme::eggplant();}
+            2=>{theme = colorscheme::Theme::desert();}
+            _=>{theme = colorscheme::Theme::default();}
         }
         //prevent from choosing the current theme
-        if self.screen.theme_name() == self.theme.name{
+        if GlobalConfigs::get_instance().get_theme_name() == theme.name{
             self.randomize_theme()
         }else{
-            self.screen.set_theme(self.theme.clone());
+            self.screen.set_theme(&theme);
+            GlobalConfigs::get_instance().set_theme(&theme);
+
         }
     }
 
 }
 
-#[derive(Default)]
 /// Storing information of 
-/// different states such as the choosen interface, his channel and mode.
+/// different states such as the choosen .interface, his channel and mode.
+#[derive(Default)]
 struct GlobalConfigs{
-     iface: RwLock<String>,
-     channel: RwLock<String>,
-     mode: RwLock<String>,
+    iface: RwLock<String>,
+    channel: RwLock<String>,
+    mode: RwLock<String>,
+    theme: RwLock<colorscheme::Theme>,
 }
 
 
@@ -176,6 +213,31 @@ impl GlobalConfigs{
     pub fn get_instance() -> &'static Self{
         return &GLOBAL_CONFIGURATIONS;
     }
+
+    pub fn get_mode(&self) -> String{
+        self.mode.read().unwrap().clone()
+    }
+
+    pub fn set_mode(&self, mode:&str) {
+        *self.mode.write().unwrap() = mode.to_owned();
+    }
+
+    pub fn get_channel(&self) -> String{
+        self.channel.read().unwrap().clone()
+    }
+
+    pub fn set_channel(&self, channel: &str){
+        *self.channel.write().unwrap() = channel.to_owned();
+    }
+    pub fn get_theme_name(&self) -> String{
+        self.theme.read().unwrap().name.clone()
+    }
+
+    pub fn set_theme(&self,theme: &colorscheme::Theme){
+        *self.theme.write().unwrap() = theme.clone();
+    }
 }
+
+
 
 

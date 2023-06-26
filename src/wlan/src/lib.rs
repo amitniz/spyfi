@@ -118,7 +118,7 @@ pub fn toggle_power(iface: &str, state: bool) -> std::io::Result<()> {
 /// Changes the mode of the interface
 /// ## Description
 /// Switches the mode of the interface to monitor.
-pub fn toggle_monitor_mode(iface: &str, state: bool) -> std::io::Result<()> {
+fn toggle_monitor_mode(iface: &str, state: bool) -> std::io::Result<()> {
     unsafe {
         let iface_cstr = CString::new(iface).unwrap();
         if c_toggle_monitor_mode(iface_cstr.as_ptr() as *mut i8, state) != 0 {

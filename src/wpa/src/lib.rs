@@ -3,13 +3,12 @@
 //! It can capture packets from the 4-Way Handshake process and send 
 //! de-authentication to other BSSIDs.
 use std::{io::Result,convert::TryFrom, collections::HashMap};
-use itertools::Itertools;
 use libwifi::{Frame, Addresses};
 use std::io::Error;
 use core::fmt;
 use hex::FromHex;
 
-use aux;
+use aux::{IPCMessage, IPC};
 use pcap;
 use wlan;
 use crypto;
@@ -75,6 +74,7 @@ macro_rules! impl_try_from {
         }            
     };
 }
+
 // --------------------------------- Structs ----------------------------------
 
 /// contains information about a network
@@ -150,7 +150,11 @@ impl Handshake{
 impl fmt::Display for Handshake{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f,"- ssid:{}\n- bssid: {}\n- client: {}\n- ANONCE: {}\n- SNONCE: {}\n- MIC: {}\n- MIC MSG: {}\n\n",
-                self.ssid, hex::encode(self.station_mac),hex::encode(self.client_mac), hex::encode(self.a_nonce), hex::encode(self.s_nonce),hex::encode(self.mic),hex::encode(self.mic_msg))
+                self.ssid, hex::encode(self.station_mac),
+                hex::encode(self.client_mac), hex::encode(self.a_nonce), 
+                hex::encode(self.s_nonce),hex::encode(self.mic),
+                hex::encode(self.mic_msg)
+        )
     }
 }
 
@@ -217,6 +221,31 @@ impl TryFrom<libwifi::Frame> for NetworkInfo{
 }
 
 // --------------------------- Public Functions -------------------------------
+
+//A worker for cracking the network's password
+pub fn password_worker(ipc: IPC<String>,handshake: Handshake){
+    loop {
+        if let Ok(ipc_msg) = ipc.rx.recv(){
+            match ipc_msg{
+                IPCMessage::Message(password) =>{
+                    println!("[-] trying: {}",&password);
+                    if handshake.clone().try_password(&password){
+                        ipc.tx.send(IPCMessage::Message(password));
+                        return;
+                    }else{
+                        ipc.tx.send(IPCMessage::Message("wrong".to_owned()));
+                    }
+                },
+                IPCMessage::EndCommunication => {
+                    return;
+                },
+                _ => {
+                    continue;
+                }
+            }
+        }
+    }
+}
 
 // capture an handshake
 pub fn get_hs_from_file(mut pcap: pcap::Capture<pcap::Offline>,ssid: &str, bssid: &str) -> std::io::Result<Handshake> {
