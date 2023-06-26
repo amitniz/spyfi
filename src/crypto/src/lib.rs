@@ -87,12 +87,12 @@ pub fn digest_hmac_sha1<const K:usize,const N:usize>(key: &[u8;K],msg: &[u8;N]) 
 /// PTK = PRF-512(PSK + MAC1 + MAC2 + Anonce + SNonce)
 /// 
 /// * PSK - higher-level key computed with password and SSID
-/// * MAC(AA)- the mac address of the AP (authenticator).
-/// * MAC(SA)- the mac address of the client (supplicant).
+/// * MAC(AA) - the mac address of the AP (authenticator).
+/// * MAC(SA) - the mac address of the client (supplicant).
 /// * MAC1 - min between MAC(AA) and MAC(SA)
 /// * MAC2 - max between MAC(AA) and MAC(SA)
-/// * ANONCE- is a random number that the AP has made.
-/// * SNONCE- is a random number that the client has made.
+/// * ANONCE - is a random number that the AP has made.
+/// * SNONCE - is a random number that the client has made.
 ///
 /// ## Example
 /// **Basic usage:**
@@ -141,12 +141,12 @@ pub fn generate_ptk(psk: &[u8;32], client_mac: &[u8;6], station_mac:&[u8;6], a_n
 /// KCK = PRF-128(PSK + MAC1 + MAC2 + Anonce + SNonce)
 /// 
 /// * PSK - higher-level key computed with password and SSID
-/// * MAC(AA)- the mac address of the AP (authenticator).
-/// * MAC(SA)- the mac address of the client (supplicant).
+/// * MAC(AA) - the mac address of the AP (authenticator).
+/// * MAC(SA) - the mac address of the client (supplicant).
 /// * MAC1 - min between MAC(AA) and MAC(SA)
 /// * MAC2 - max between MAC(AA) and MAC(SA)
-/// * ANONCE- is a random number that the AP has made.
-/// * SNONCE- is a random number that the client has made.
+/// * ANONCE - is a random number that the AP has made.
+/// * SNONCE - is a random number that the client has made.
 ///
 /// ## Example
 /// **Basic usage:**

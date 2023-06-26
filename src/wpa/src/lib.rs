@@ -1,7 +1,10 @@
 //! # wpa
-//! `wpa` contains functions of the tool that communicate with other devices. 
-//! It can capture packets from the 4-Way Handshake process and send 
-//! de-authentication to other BSSIDs.
+//! Wi-Fi Protected Access (WPA) is a security certification program developed 
+//! by the Wi-Fi Alliance to secure wireless devices networks.
+//! 
+//! `wpa` contains functions of the tool that are responsible for capturing relevant 
+//! information from the handshake stage, collect information about near-by networks, 
+//! and send de-authentication to other BSSIDs.
 use std::{io::Result,convert::TryFrom, collections::HashMap};
 use libwifi::{Frame, Addresses};
 use std::io::Error;
@@ -13,7 +16,7 @@ use pcap;
 use wlan;
 use crypto;
 
-//PACKET PARSING POSITIONS
+// PACKET PARSING POSITIONS
 const SIGNAL_POS: usize = 30;
 const FRAME_HEADER_LENGTH: usize = 2;
 const EAPOL_MSG_NUM_OFFSET: usize = 0xd;
@@ -79,13 +82,12 @@ macro_rules! impl_try_from {
 
 /// contains information about a network
 /// ## Description
-/// The struct contains the relevant information about a network 
-/// as captured from the interface.
-/// * BSSID
-/// * SSID
+/// The struct contains the relevant information about a network as captured from the interface.
+/// * BSSID - MAC address
+/// * SSID - network's name
 /// * Channel
 /// * Signal strength
-//TODO: use in list networks
+/// * Clients - list of connected devices
 #[derive(Debug,Clone, PartialEq, Eq, Hash)]
 pub struct NetworkInfo {
     pub bssid: [u8; 6],
@@ -134,6 +136,8 @@ impl Handshake{
         } 
     }
 
+    /// Checks if a certain password belongs to the network by trying to generate the keys and 
+    /// compare the MIC to the given MIC from the handshake.
     pub fn try_password(self,password: &str) -> bool{
         //generate PSK
         let psk = crypto::generate_psk(password, &self.ssid);
@@ -247,7 +251,18 @@ pub fn password_worker(ipc: IPC<String>,handshake: Handshake){
     }
 }
 
-// capture an handshake
+/// Capture a handshake from a PCAP file
+/// ## Description 
+/// The function receives interface, PCAP file, ssid and bssid and scans for 4 EAPOL 
+/// packets of the given station and client. Then extract the relevant data from each 
+/// packet (A Nonce, B Nonce, MIC, MIC message), and returns it as a struct.
+/// ## Example
+/// **Basic usage:**
+/// ```
+///     let pcap: Result<pcap::Capture<pcap::Offline>, pcap::Error> =
+///                                       pcap::Capture::from_file("pcap_file.pcap");
+///     let handshake = wpa::get_hs_from_file(pcap.unwrap(), "test", "AABBCCDDEEFF");
+/// ```
 pub fn get_hs_from_file(mut pcap: pcap::Capture<pcap::Offline>,ssid: &str, bssid: &str) -> std::io::Result<Handshake> {
     let mut hs_msgs: [Option<libwifi::frame::QosData>; 4] = Default::default();
     loop { //TODO: replace with timeout
@@ -309,12 +324,16 @@ pub fn get_hs_from_file(mut pcap: pcap::Capture<pcap::Offline>,ssid: &str, bssid
     }
 }
 
-/// Capture a handshake
-/// ## Description
-/// Receives interface and captures packets until finding 4 EAPOL messages
-/// related to the same handshake process.
-/// 
-/// Returns a struct with the relevant data from the messages.
+/// Capture a handshake while listening
+/// ## Description 
+/// The function receives interface, ssid and bssid and listens until capturing 4 EAPOL 
+/// packets of the given station and client. Then extract the relevant data from each 
+/// packet (A Nonce, B Nonce, MIC, MIC message), and returns it as a struct.
+/// ## Example
+/// **Basic usage:**
+/// ```
+///     let handshake = wpa::get_hs("wlan0", "test", "AABBCCDDEEFF");
+/// ```
 pub fn get_hs(iface: &str,ssid: &str, bssid: &str) -> std::io::Result<Handshake> {
     // get recv channel to the interface
     let mut rx = wlan::get_recv_channel(iface)?;
@@ -378,11 +397,20 @@ pub fn get_hs(iface: &str,ssid: &str, bssid: &str) -> std::io::Result<Handshake>
     }
 }
 
-/// Send de-auth to a client from a given BSSID
-/// if target is None, the deauth will be sent to broadcast
+/// Send de-auth to a specific client or broadcast from a given station
 /// ## Description
-/// The interface sends De-authentication packet to a given 
-/// BSSID or broadcast it to all accessible networks.
+/// The functions receives interface, BSSID of a station and a target's BSSID.
+/// The interface sends De-authentication packet from a given BSSID
+/// to a specific client or broadcast if terget is None.
+/// ## Example
+/// **Basic usage:**
+/// ```
+///     let client: String = "FFEEDDCCBBAA".to_string();
+///     // send de-auth from station AA:BB:CC:DD:EE:FF to client FF:EE:DD:CC:BB:AA
+///     wpa::send_deauth("wlan1", "AABBCCDDEEFF", Some(client));
+///     // will be sent broadcast
+///     wpa::send_deauth("wlan1", "AABBCCDDEEFF", None);
+/// ```
 pub fn send_deauth(iface: &str, bssid: &str, target: Option<String>) -> std::io::Result<()>{
     // get a sender channel to the iface
     let mut tx = wlan::get_send_channel(iface)?;
@@ -400,7 +428,20 @@ pub fn send_deauth(iface: &str, bssid: &str, target: Option<String>) -> std::io:
     Ok(())
 }
 
-//TODO: description
+/// Collects information about near-by networks and devices
+/// ## Description
+/// The functions receives interface and time interval that specifies how 
+/// much time to listen, and scans for networks and devices. It parses 
+/// every packet and saves the relevant information about the network such 
+/// as SSID, BSSID, signal strength and channel. If the network is already 
+/// familier, it updates the information.
+/// The function stops after the given time and returns a HashMap of all 
+/// the near-by networks.
+/// ## Example
+/// **Basic usage:**
+/// ```
+///     let stations = wpa::listen_and_collect("wlan0", std::time::Duration::from_secs(60));
+/// ```
 pub fn listen_and_collect(iface: &str, interval: std::time::Duration) -> Result<HashMap<String,NetworkInfo>> {
 
     let mut networks : HashMap<String,NetworkInfo> = HashMap::new();
