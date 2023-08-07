@@ -4,6 +4,7 @@ use crate::GlobalConfigs;
 use super::*;
 use wpa::NetworkInfo;
 use hex::encode;
+use std::time::{SystemTime, UNIX_EPOCH};
 use aux::IOCommand;
 
 pub struct MainScreen{
@@ -225,7 +226,7 @@ impl MainScreen{
             _ => {self.theme.bg},
         }; 
         
-        let networks_block = List::new(self.networks.items.iter().map(|i|{ListItem::new(format!(" {} ",i))}).collect::<Vec<ListItem>>())
+        let networks_block = List::new(self.networks_info.iter().map(|(_,v)|{ListItem::new(format!(" {} ",v.ssid))}).collect::<Vec<ListItem>>())
 
             .block(
                 Block::default()
@@ -272,12 +273,19 @@ impl MainScreen{
             .constraints([Constraint::Percentage(30),Constraint::Percentage(70)])
             .split(area);
 
+        let epoch_now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         let stats_block = Paragraph::new(
             vec![
                 Spans::from(format!(" bssid: {}",encode(network_info.bssid))),
                 Spans::from(format!(" channel: {}",network_info.channel.unwrap())),
                 Spans::from(format!(" signal: {}",aux::signal_icon(network_info.signal_strength.unwrap()))),
-                Spans::from(format!(" handshake: no")),
+                Spans::from(format!(" protocol: {}",network_info.protocol)),
+                Spans::from(format!(" handshake: {}",match network_info.handshake.is_some(){
+                    true =>"✅",
+                    false =>"❎",
+                })),
+
+                Spans::from(format!(" last appearance: {} sec",epoch_now-network_info.last_appearance)),
             ]
             )
             .block(

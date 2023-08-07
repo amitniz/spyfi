@@ -7,11 +7,11 @@ use aux::{IPCMessage,IPC,IOCommand};
 const MAX_CHANNEL: usize = 11;
 pub type MonitorSender = Sender<IPCMessage<HashMap<String,NetworkInfo>>>;
 pub type MonitorReciever = Receiver<IPCMessage<HashMap<String,NetworkInfo>>>;
-
+type Bssid = String;
 pub struct MonitorThread{
     iface: String,
     channels: IPC<HashMap<String,NetworkInfo>>,
-    networks: HashMap<String,NetworkInfo>,
+    networks: HashMap<Bssid, NetworkInfo>,
     sweep_mode: bool,
 }
 
@@ -37,12 +37,21 @@ impl MonitorThread{
                 wlan::switch_iface_channel(&self.iface, channel);
             }
             match wpa::listen_and_collect(&self.iface, time::Duration::from_secs(1)){
-                Ok(networks) =>{
-                    for (ssid, mut network) in networks.into_iter(){
-                        self.networks.entry(ssid)
-                            .and_modify(|e| e.update(&mut network))
-                            .or_insert(network);
-                            
+                Ok(captured_msgs) =>{
+                    for msg in captured_msgs{
+                        match msg{
+                            wpa::ParsedFrame::Network(mut netinfo)=>{
+                                self.networks.entry(hex::encode(netinfo.bssid))
+                                    .and_modify(|e| e.update(&mut netinfo))
+                                    .or_insert(netinfo);
+                            },
+                            wpa::ParsedFrame::Eapol(eapol)=>{
+                                let entry = self.networks.iter().find(|(_,e)| hex::encode(e.bssid) == eapol.bssid);
+                                if let Some((k,_)) = entry{
+                                    self.networks.entry(k.clone()).and_modify(|e|e.add_eapol(eapol));
+                                }
+                            }
+                        }
                     }
                 },
                 Err(_) => { self.channels.tx.send(IPCMessage::PermissionsError);},

@@ -8,7 +8,7 @@ use std::{sync::mpsc,thread};
 use clap::{Parser, ValueEnum, Args, Subcommand};
 use wlan;
 use aux::{IPC,IPCMessage};
-use wpa::{self, NetworkInfo};
+use wpa::{self, NetworkInfo, ParsedFrame};
 use crypto;
 use pcap;
 use hex::encode;
@@ -183,11 +183,13 @@ impl Enumerate{
                     let stations = wpa::listen_and_collect(iface,interval);
                     match stations {
                         Ok(stations) =>{
-                            for (_,mut station) in stations{
-                                networks.entry(station.ssid.clone())
-                                    .and_modify(|e|  e.update(&mut station))
-                                    .or_insert(station);
-                            } 
+                            for mut station in stations{
+                                if let ParsedFrame::Network(mut station) = station{
+                                    networks.entry(station.ssid.clone())
+                                        .and_modify(|e|  e.update(&mut station))
+                                        .or_insert(station);
+                                }
+                            }
                         },
                         Err(e) =>{
                             todo!("handle errors");
