@@ -8,7 +8,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use aux::IOCommand;
 
 pub struct MainScreen{
-    tabs: StatefulList<String>,
     toggle_configs: bool,
     panes: Panes,
     networks_info: HashMap<String, NetworkInfo>,
@@ -20,7 +19,6 @@ pub struct MainScreen{
 impl Default for MainScreen{
     fn default() -> Self {
         MainScreen{
-            tabs: StatefulList::new(vec!["Enum","Attack"].into_iter().map(|i|{i.to_owned()}).collect()),
             networks_info: HashMap::new(),
             networks: StatefulList::default(),
             theme: GlobalConfigs::get_instance().theme
@@ -51,20 +49,20 @@ impl<B:Backend> Screen<B> for MainScreen{
                     //select the configs pane only when poped
                     self.panes.selected = self.panes.panes.len() -1;
                 }
-                75
+                80
             },
             false => {
                 if self.panes.remove_pane("configs"){
                     //choose the first pane
                     self.panes.selected = 0;
                 }
-                95
+                100
             },
         };
 
         let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(5),Constraint::Percentage(tab_view_percentage),Constraint::Percentage(20)].as_ref())
+        .constraints([Constraint::Percentage(tab_view_percentage),Constraint::Percentage(20)].as_ref())
         .split(Rect {
             //calcultes the location of the center
             x: (f.size().width - w_size.width)/2,
@@ -76,18 +74,11 @@ impl<B:Backend> Screen<B> for MainScreen{
 
         //TODO: remove tabs code
         //create tabs block
-        self.create_tabs_block(f,chunks[0]); 
-
-        // render the selected tab
-        match self.tabs.state.selected().unwrap_or(0){
-            0 => self.draw_enum_tab(f,chunks[1]),
-            1 => {},
-            _ => panic!("rendered none existed tab")
-        }
+        self.draw_enum_tab(f,chunks[0]);
 
         //configs block
         if self.toggle_configs{
-            self.create_configs_block(f, chunks[2]);
+            self.create_configs_block(f, chunks[1]);
         }
 
     }
@@ -98,8 +89,6 @@ impl<B:Backend> Screen<B> for MainScreen{
 
     fn handle_input(&mut self,key:KeyEvent) -> bool{
         match key.code {
-            KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('H') => self.tabs.previous(),
-            KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('L') => self.tabs.previous(),
             KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('K') => {
               match self.panes.selected().as_str(){
                 "networks" =>{
@@ -160,31 +149,6 @@ impl<B:Backend> Screen<B> for MainScreen{
 }
 
 impl MainScreen{
-    fn create_tabs_block<B>(&self,f:&mut Frame<B>,area: Rect) where B:Backend{
-        
-        let tab_names = self.tabs.items
-            .iter()
-            .map(|t|{            let (first, rest) = t.split_at(1);
-                    Spans::from(vec![
-                        Span::styled(first, Style::default()),
-                        Span::styled(rest, Style::default()),
-                    ])}
-                )
-            .collect();
-
-        let tabs = Tabs::new(tab_names)
-            .block(Block::default().borders(Borders::NONE))
-            .select(self.tabs.state.selected().unwrap_or(0))
-            .style(Style::default().fg(Color::Cyan))
-            .highlight_style(
-                Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .bg(Color::Black),
-            );
-
-        f.render_widget(tabs, area);
-
-    }
     
     fn create_configs_block<B>(&mut self,f:&mut Frame<B>, area: Rect) where B:Backend{
         let bg = match self.panes.selected().as_str(){
@@ -263,10 +227,10 @@ impl MainScreen{
     fn draw_info_pane<B>(&mut self, f: &mut Frame<B>,area: Rect,network_info: &NetworkInfo) where B:Backend {
 
         let area = Rect{
-            x:area.x+1,
-            y:area.y+1,
-            width:area.width-2,
-            height:area.height-2,
+            x:area.x,
+            y:area.y,
+            width:area.width,
+            height:area.height,
         };
         let chunks = Layout::default()
             .direction(Direction::Horizontal)

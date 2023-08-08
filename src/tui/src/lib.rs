@@ -174,12 +174,12 @@ impl Tui{
     fn randomize_theme(&mut self){
         let mut rng = rand::thread_rng();
         let rand_int = rng.gen_range(1..3);
-        let theme;
-        match rand_int{
-            1=>{theme = colorscheme::Theme::eggplant();}
-            2=>{theme = colorscheme::Theme::desert();}
-            _=>{theme = colorscheme::Theme::default();}
-        }
+        let theme = colorscheme::Theme::default();
+        // match rand_int{
+        //     1=>{theme = colorscheme::Theme::eggplant();}
+        //     2=>{theme = colorscheme::Theme::desert();}
+        //     _=>{theme = colorscheme::Theme::default();}
+        // }
         //prevent from choosing the current theme
         if GlobalConfigs::get_instance().get_theme_name() == theme.name{
             self.randomize_theme()
