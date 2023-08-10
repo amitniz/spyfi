@@ -8,7 +8,6 @@ use std::{
     sync::{RwLock,mpsc},
     thread, collections::HashMap,
 };
-use aux::{IPCMessage, IOCommand};
 use rand::Rng;
 use lazy_static::lazy_static;
 use crossterm::{

@@ -6,8 +6,8 @@ use super::items::{self,Item};
 use aux::IPCMessage;
 use tui::{
     backend::Backend,
-    layout::{Rect, Constraint, Direction, Layout},
-    widgets::{Block, Borders,Paragraph,ListItem,ListState,List,Wrap, Tabs},
+    layout::{Rect, Constraint, Direction, Layout,Alignment},
+    widgets::{Block, Borders,Paragraph,ListItem,ListState,List,Wrap, Clear},
     text::{Span,Spans},
     style::{Color,Style,Modifier},
     Frame
@@ -52,7 +52,7 @@ impl<T> StatefulList<T>{
         state_list
     }
 
-    fn next(&mut self) {
+    pub fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
                 if i >= self.items.len() - 1 {
@@ -66,7 +66,7 @@ impl<T> StatefulList<T>{
         self.state.select(Some(i));
     }
 
-    fn previous(&mut self) {
+    pub fn previous(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
                 if i == 0 {

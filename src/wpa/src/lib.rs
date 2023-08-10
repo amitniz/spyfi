@@ -6,7 +6,7 @@
 //! information from the handshake stage, collect information about near-by networks, 
 //! and send de-authentication to other BSSIDs.
 use std::io::Result;
-use libwifi::{Frame, frame::Beacon};
+use libwifi::Frame;
 use std::io::Error;
 use hex::FromHex;
 
@@ -19,9 +19,13 @@ mod handshake;
 mod consts;
 
 use consts::*;
-use handshake::Handshake;
 
-pub use network_info::{ParsedFrame,NetworkInfo,FrameType};
+pub use handshake::Handshake;
+pub use network_info::{
+    ParsedFrame,
+    NetworkInfo,
+    FrameType
+};
 
 
 

@@ -1,10 +1,8 @@
-use std::collections::HashMap;
-
 use crate::GlobalConfigs;
 use crate::create_list;
 use super::*;
 use wlan;
-use wpa::NetworkInfo;
+
 const LOGO: [&'static str; 7] = [
 
     "███████╗██████╗ ██╗   ██╗███████╗██╗",
@@ -13,7 +11,7 @@ const LOGO: [&'static str; 7] = [
     "╚════██║██╔═══╝   ╚██╔╝  ██╔══╝  ██║",
     "███████║██║        ██║   ██║     ██║",
     "╚══════╝╚═╝        ╚═╝   ╚═╝     ╚═╝",
-    "             👻WiFi exploitation kit"
+    "           👻 Wi-Fi exploitation kit"
 ];
 
 pub struct WelcomeScreen{
@@ -115,7 +113,7 @@ impl WelcomeScreen{
 
     fn create_footer_block(&self) -> Paragraph{
 
-        let footer_text:Vec<Spans> = vec![Spans::from(vec![Span::raw("select<Enter>, random theme<p>, quit<q>")])];
+        let footer_text:Vec<Spans> = vec![Spans::from(vec![Span::raw("select<Enter>  random theme<p>  quit<q>")])];
         Paragraph::new(footer_text)
             .wrap(Wrap{trim:false})
             .block(Block::default())
