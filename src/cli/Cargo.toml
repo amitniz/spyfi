@@ -9,6 +9,7 @@ edition = "2021"
 clap = { version = "4.1.13", features = ["derive"] }
 wlan = {path = "../wlan"}
 aux = {path = "../aux"}
+threads = {path = "../threads"}
 wpa = {path = "../wpa"}
 crypto = {path = "../crypto"}
 hex = "0.4.3"

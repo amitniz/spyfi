@@ -2,8 +2,7 @@ use std::collections::HashMap;
 
 use crossterm::event::{KeyEvent,KeyCode};
 use wpa::NetworkInfo;
-use super::items::{self,Item};
-use aux::IPCMessage;
+use threads::ipc::IPCMessage;
 use tui::{
     backend::Backend,
     layout::{Rect, Constraint, Direction, Layout,Alignment},
@@ -36,7 +35,7 @@ pub use main_screen::*;
 
 // ------------------------------  custom widgets -----------------------------
 
-#[derive(Default)]
+#[derive(Default,Debug,Clone)]
 struct StatefulList<T>{
     state: ListState,
     items: Vec<T>,
@@ -78,6 +77,13 @@ impl<T> StatefulList<T>{
             None => 0,
         };
         self.state.select(Some(i));
+    }
+
+    pub fn selected(&self) -> Option<&T>{
+        match self.state.selected(){
+            Some(i) => Some(&self.items[i]),
+            None => None,
+        }
     }
 
 }

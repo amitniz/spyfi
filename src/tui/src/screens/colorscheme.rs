@@ -26,16 +26,16 @@ impl Theme{
     pub fn default() -> Self{
         Theme{
             name: "default".to_owned(),
-            logo: Color::Green,
+            logo: Color::Rgb(0x9d,0x02,0x08),
             border_bg: Color::Black,
-            accent: Color::Green,
+            accent: Color::Rgb(0x9d,0x02,0x08),
             border_fg: Color::White,
             bg: Color::Black,
-            text: Color::LightGreen,
+            text: Color::LightRed,
             bright_text: Color::White,
-            highlight: Color::Green,
-            highlight_pane: Color::Green,
-            error: Color::Red,
+            highlight: Color::Rgb(0x9d,0x02,0x08),
+            highlight_pane: Color::Rgb(0x9d,0x2,0x8),
+            error: Color::Rgb(0x9d, 0x2, 0x8),
         }
     }
 }

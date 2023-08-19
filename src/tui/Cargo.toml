@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 wlan = {path="../wlan"}
 wpa = {path="../wpa"}
+threads = {path="../threads"}
 aux = {path="../aux"}
 tui = "0.19.0"
 crossterm = "0.26.0"

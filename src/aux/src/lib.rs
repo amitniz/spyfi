@@ -2,7 +2,6 @@
 //! `aux` is a collection of utilities to help performing certain
 //!  calculations and tasks more conveniently.
 
-use std::sync::mpsc::{Sender,Receiver};
 // ---------------------------- Aux Functions ---------------------------------
 
 /// Calculates modulo between two given numbers
@@ -55,24 +54,3 @@ pub fn signal_icon(signal_strength: i8) -> String{
         signals[0].to_owned()
     }
 }
-#[derive(Clone)]
-pub enum IOCommand{
-    Sweep,
-    ChangeChannel(u8),
-    SendDeauth,
-}
-
-#[derive(Clone)]
-pub enum IPCMessage<T>{
-    Message(T),
-    Password(String),
-    IOCommand(IOCommand),
-    PermissionsError,
-    EndCommunication,
-}
-
-pub struct IPC<T>{
-    pub rx: Receiver<IPCMessage<T>>,
-    pub tx: Sender<IPCMessage<T>>,
-}
-

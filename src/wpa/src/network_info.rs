@@ -1,6 +1,7 @@
 use crate::{
     handshake::{Handshake, EapolMsg},
-    consts::*
+    attack_info::AttackInfo,
+    consts::*, DictionaryAttack
 };
 use std::{convert::TryFrom, collections::HashMap};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -61,7 +62,8 @@ macro_rules! impl_try_from {
                     captured_handshakes: HashMap::new(),
                     protocol: identify_protocol(value.station_info.data),
                     last_appearance: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
-                    frame_type: None
+                    frame_type: None,
+                    attack_info: None ,
                     }
                 )
             }
@@ -91,6 +93,7 @@ pub struct NetworkInfo {
     pub last_appearance: u64,
     captured_handshakes: HashMap<Client, [Option<EapolMsg>;4]>,
     pub frame_type: Option<FrameType>,
+    pub attack_info: Option<DictionaryAttack>,
 }
 
 impl PartialEq for NetworkInfo{
@@ -247,6 +250,7 @@ impl TryFrom<libwifi::frame::QosNull> for NetworkInfo {
                 protocol: "unknown".to_owned(),
                 last_appearance: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
                 frame_type: None,
+                attack_info: None,
             }
         )
     }

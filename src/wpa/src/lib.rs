@@ -10,16 +10,17 @@ use libwifi::Frame;
 use std::io::Error;
 use hex::FromHex;
 
-use aux::{IPCMessage, IPC};
 use pcap;
 use wlan;
 
 mod network_info;
 mod handshake;
+mod attack_info;
 mod consts;
 
 use consts::*;
 
+pub use attack_info::{AttackInfo,DeauthAttack,DictionaryAttack};
 pub use handshake::Handshake;
 pub use network_info::{
     ParsedFrame,
@@ -31,30 +32,6 @@ pub use network_info::{
 
 // --------------------------- Public Functions -------------------------------
 
-//A worker for cracking the network's password
-pub fn password_worker(ipc: IPC<String>,handshake: Handshake){
-    loop {
-        if let Ok(ipc_msg) = ipc.rx.recv(){
-            match ipc_msg{
-                IPCMessage::Message(password) =>{
-                    println!("[-] trying: {}",&password);
-                    if handshake.clone().try_password(&password){
-                        ipc.tx.send(IPCMessage::Message(password));
-                        return;
-                    }else{
-                        ipc.tx.send(IPCMessage::Message("wrong".to_owned()));
-                    }
-                },
-                IPCMessage::EndCommunication => {
-                    return;
-                },
-                _ => {
-                    continue;
-                }
-            }
-        }
-    }
-}
 
 /// Capture a handshake from a PCAP file
 /// ## Description 

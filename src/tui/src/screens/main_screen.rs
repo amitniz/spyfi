@@ -1,30 +1,33 @@
-use std::{collections::HashMap};
+use std::{collections::HashMap,cell::Cell};
 
 use crate::GlobalConfigs;
 use super::*;
-use wpa::{NetworkInfo, Handshake};
+use wpa::{NetworkInfo,AttackInfo, DeauthAttack, DictionaryAttack};
 use hex::encode;
 use std::time::{SystemTime, UNIX_EPOCH};
-use aux::IOCommand;
+use threads::ipc::IOCommand;
 
+type AttacksDict = Cell<HashMap<String,DictionaryAttack>>;
+type BSSID = String;
 
-#[derive(Clone,Debug)]
-pub struct AttackInfo{
-    pub handshake: Option<Handshake>,
-    pub ssid: String,
-    pub bssid: String,
-    pub client: String,
-}
 
 pub struct MainScreen{
+    // show config pane
     toggle_configs: bool,
+    // show deauth popup
     toggle_deauth_popup: bool,
+    // screen panes
     panes: Panes,
+    // captured networks
     networks_info: HashMap<String, NetworkInfo>,
+    // captured stateful list
     networks: StatefulList<String>,
+    // current attacks
+    attacks: AttacksDict,
+    // current theme
     theme: colorscheme::Theme,
+    // msg to sent to monitor thread
     out_msg: Option<ScreenIPC>,
-    attack_info: Option<AttackInfo>,
 }
 
 impl Default for MainScreen{
@@ -39,8 +42,8 @@ impl Default for MainScreen{
             toggle_configs: false,
             toggle_deauth_popup: false,
             panes: Panes::default(),
+            attacks: Cell::new(HashMap::new()),
             out_msg: None,
-            attack_info: None,
         }
     }
 }
@@ -102,6 +105,20 @@ impl<B:Backend> Screen<B> for MainScreen{
 
     fn handle_input(&mut self,key:KeyEvent) -> bool{
         match key.code {
+            KeyCode::Char(c) if self.panes.selected() == "attack"=>{
+                let bssid = hex::encode(self.networks_info.get(self.networks.selected().unwrap())
+                    .as_ref().unwrap().bssid.clone());
+                let mut wordlist = &mut self.attacks.get_mut().get_mut(&bssid).unwrap().wordlist;
+                wordlist.push(c);
+            }
+
+            KeyCode::Backspace if self.panes.selected() == "attack" =>{
+                let bssid = hex::encode(self.networks_info.get(self.networks.selected().unwrap())
+                    .as_ref().unwrap().bssid.clone());
+                let mut wordlist = &mut self.attacks.get_mut().get_mut(&bssid).unwrap().wordlist;
+                wordlist.pop();
+            }
+
             KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('K') => {
                 if self.toggle_deauth_popup{
                     return true;
@@ -130,17 +147,24 @@ impl<B:Backend> Screen<B> for MainScreen{
                 self.toggle_configs = !self.toggle_configs;
             },
             //open deauth popup
-            KeyCode::Enter =>{
-                if self.attack_info.is_some(){
-                    if self.toggle_deauth_popup{
-                        //send deauth
-                        let iface = GlobalConfigs::get_instance().get_iface();
-                        let bssid = self.attack_info.as_ref().unwrap().bssid.clone();
-                        wpa::send_deauth(&iface, &bssid, None);
-                    }
-                    //toggle deauth popup
-                    self.toggle_deauth_popup = !self.toggle_deauth_popup;
+            KeyCode::Enter | KeyCode::Char('d') | KeyCode::Char('D') =>{
+                if self.toggle_deauth_popup{
+                    //send deauth
+                    let iface = GlobalConfigs::get_instance().get_iface();
+                    //TODO: consider storing bssid as String in networkinfo
+                    let bssid = hex::encode(self.networks_info.get(self.networks.selected().unwrap())
+                        .as_ref().unwrap().bssid.clone());
+                    let station_channel = self.networks_info.get(self.networks.selected().unwrap())
+                        .as_ref().unwrap().channel.unwrap();
+                    let deauth_attack = DeauthAttack{
+                        bssid,
+                        client: None,
+                        station_channel,
+                    };
+                    self.out_msg = Some(IPCMessage::Attack(AttackInfo::DeauthAttack(deauth_attack)));
                 }
+                //toggle deauth popup
+                self.toggle_deauth_popup = !self.toggle_deauth_popup;
             } 
             //close deauth popup
             KeyCode::Esc =>{
@@ -176,7 +200,16 @@ impl<B:Backend> Screen<B> for MainScreen{
                 if self.toggle_deauth_popup{
                     return true;
                 }             
-                self.panes.next()
+                self.panes.next();
+                //don't allow attack pane with no attack info
+                if self.panes.selected() == "attack"{
+                    let bssid = hex::encode(self.networks_info.get(self.networks.selected().unwrap())
+                    .as_ref().unwrap().bssid.clone());
+                    if !self.attacks.get_mut().contains_key(&bssid){
+                        self.panes.next();
+                    }
+                }
+                return true;
             },
             
             _ => return false
@@ -251,17 +284,19 @@ impl MainScreen{
             )
             .split(centered_area);
 
-        let device = match self.attack_info.as_ref().unwrap().client.as_str(){
-            "broadcast" => "all devices".to_owned(),
-            s => s.to_owned(),
-        };
+        let device = "all devices".to_owned(); //TODO: check selected client
 
-        let network = self.attack_info.as_ref().unwrap().ssid.clone();
-
+        let network = self.networks_info.get(self.networks.selected().unwrap()).unwrap().ssid.clone();
+        let channel = self.networks_info.get(self.networks.selected().unwrap())
+            .unwrap().channel.unwrap();
 
         let text = Paragraph::new(
             vec![
-                Spans::from(format!("Are you sure you want disconnect {} from the network {}?",device,network)),
+                Spans::from(format!("Are you sure you want disconnect {} from the network {} at channel {}?",
+                    device,
+                    network,
+                    channel
+                )),
                 Spans::from(format!("<ENTER> Ok  <ESC> Cancel ")),
             ]
         ).alignment(Alignment::Center)
@@ -292,11 +327,12 @@ impl MainScreen{
         self.draw_network_info_pane(f,chunks[1]);
         self.draw_attack_pane(f,chunks[2]);
         
-        //update networks info pane
+        //update networks info pane and attack pane
         if !self.networks.items.is_empty(){
             let current_network = self.networks.items[self.networks.state.selected().unwrap_or(0)].clone();
-            let netinfo = self.networks_info.get(&current_network).unwrap().clone();
+            let mut netinfo = self.networks_info.get(&current_network).unwrap().clone();
             self.update_network_info_pane(f,chunks[1],&netinfo);
+            self.update_attack_pane(f,chunks[2],&netinfo);
         }
     
         if self.toggle_deauth_popup{
@@ -327,11 +363,18 @@ impl MainScreen{
     }
 
     fn draw_attack_pane<B>(&mut self, f: &mut Frame<B>,area: Rect) where B:Backend{
+
+        let attack_bg = match self.panes.selected().as_str(){
+            "attack" => {self.theme.highlight},
+            _ => {self.theme.bg},
+        }; 
+
+
         let attack_block = Block::default().
             borders(Borders::ALL)
             .title(" Attack ")
             .border_style(Style::default()
-                .fg(self.theme.border_fg).bg(self.theme.border_bg)
+                .fg(self.theme.border_fg).bg(attack_bg)
             )
             .style(Style::default().bg(self.theme.bg).fg(self.theme.text));
 
@@ -363,6 +406,64 @@ impl MainScreen{
         );
         f.render_stateful_widget(networks_block, area,&mut self.networks.state);
     }
+
+    fn update_attack_pane<B>(&mut self, f:&mut Frame<B>, area: Rect, network_info: &NetworkInfo) where B:Backend{
+        
+        // show message if no handshake found.
+        if network_info.handshake.is_none(){
+            let new_area = Rect{
+                x: area.x,
+                y: area.y + area.height/2,
+                width: area.width,
+                height: area.height/2,
+            };
+            let text = Paragraph::new(
+                vec![
+                    Spans::from("No Handshake captured.")
+                ]
+            ).alignment(Alignment::Center)
+            .style(
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD)
+            );
+            f.render_widget(text, new_area);
+            return;
+        }   
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3),Constraint::Percentage(75)])
+            .split(Rect{
+                x: area.x + 1,
+                y: area.y + 1,
+                width:area.width -2,
+                height: area.height -2,
+            });
+
+        let attacks = self.attacks.get_mut();
+        let bssid = hex::encode(network_info.bssid);
+        if !attacks.contains_key(&bssid){
+            attacks.insert(bssid.clone(),DictionaryAttack::default());
+            self.panes.add_pane("attack");
+        }
+        //get the corespond DictionaryAttack
+        let attack = attacks.get_mut(&bssid).unwrap();
+        
+        let wordlist_block = Paragraph::new(
+            vec![
+                Spans::from(attack.wordlist.clone())
+            ]
+        ).block(Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(self.theme.border_fg).bg(Color::Black))
+            .title(format!(" Wordlist "))).style(Style::default().bg(Color::DarkGray).fg(Color::White));
+
+        f.render_widget(wordlist_block, chunks[0]);
+    }
+
+    
+    
 
     fn update_network_info_pane<B>(&mut self, f: &mut Frame<B>,area: Rect,network_info: &NetworkInfo) where B:Backend {
 
@@ -419,16 +520,44 @@ impl MainScreen{
         //render widgets
         f.render_widget(stats_block, chunks[0]);
         f.render_widget(clients_block, chunks[1]);
-
-        //update attack info
-        let attack_info = AttackInfo{
-            ssid: network_info.ssid.clone(),
-            bssid: hex::encode(network_info.bssid),
-            client: "broadcast".to_owned(),
-            handshake: network_info.handshake.clone(),
-        };
-
-        self.attack_info = Some(attack_info);
+        
     }
 }
 
+//TODO: convert networks to selection. Should store every selection,
+//current network, client, wordlist/thread
+//Note only clients must be stateful
+#[derive(Debug,Clone,Default)]
+struct Networks{
+    network_info: HashMap<BSSID,NetworkInfo>,
+    network_state: StatefulList<BSSID>,
+    clients_state: HashMap<BSSID, StatefulList<String>>,
+}
+
+impl Networks{
+    // returns reference to the selected NetworkInfo
+    pub fn get_selected_network_info(&self) -> Option<&NetworkInfo>{
+        let bssid: &BSSID = self.network_state.selected()?;
+        self.network_info.get(bssid)
+    }
+
+    pub fn select_next_network(&mut self){
+        self.network_state.next();
+    }
+    
+    pub fn select_next_client(&mut self,bssid: &str){
+        todo!();
+    }
+
+    pub fn update_networks(&mut self, networks: Vec<NetworkInfo>){todo!();}
+
+    pub fn get_networks_state(&self) -> &ListState{
+        &self.network_state.state
+    }
+
+    pub fn get_clients_state(&self,bssid: &str) -> Option<&ListState>{
+        let state_list = self.clients_state.get(bssid)?;
+        Some(&state_list.state)
+    }
+
+}

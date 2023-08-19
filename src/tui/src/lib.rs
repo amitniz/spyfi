@@ -1,6 +1,5 @@
 mod screens;
 mod items;
-mod monitor;
 
 use std::{
     io::{self, Stdout},
@@ -33,7 +32,8 @@ use tui::{
 
 
 use screens::{Screen,colorscheme};
-use monitor::MonitorThread;
+use threads::monitor::MonitorThread;
+use threads::ipc::{IPC,IPCMessage};
 use wpa::NetworkInfo;
 
 
@@ -63,7 +63,7 @@ lazy_static! {
 // -------------------------------- Structs -----------------------------------
 pub struct Tui{
     screen: Box<dyn Screen<CrosstermBackend<Stdout>>>,// the current screen
-    ipc_channels: Option<aux::IPC<HashMap<String,NetworkInfo>>>, //IPC channels for communicating with monitor thread
+    ipc_channels: Option<IPC<HashMap<String,NetworkInfo>>>, //IPC channels for communicating with monitor thread
 }
 
 impl Tui{
@@ -90,14 +90,14 @@ impl Tui{
             if let Some(ipc) = self.ipc_channels.as_ref(){
                 if let Ok(msg) = ipc.rx.try_recv(){
                     match msg{
-                        aux::IPCMessage::Message(netinfo) =>{
+                        IPCMessage::Message(netinfo) =>{
                             //update screen data
-                            let res = self.screen.update(aux::IPCMessage::Message(netinfo));
+                            let res = self.screen.update(IPCMessage::Message(netinfo));
                             if let  Some(msg) = res{
                                 ipc.tx.send(msg);
                             }
                         },
-                        aux::IPCMessage::PermissionsError =>{
+                        IPCMessage::PermissionsError =>{
                             //popup permissions screen
                             todo!("permissions error");
                         }
@@ -153,7 +153,7 @@ impl Tui{
     fn spawn_monitor_thread(&mut self){
         let (thread_tx,main_rx) = mpsc::channel();
         let (main_tx,thread_rx) = mpsc::channel(); 
-        self.ipc_channels = Some(aux::IPC{
+        self.ipc_channels = Some(IPC{
             rx: main_rx,
             tx: main_tx,
         });
@@ -166,7 +166,7 @@ impl Tui{
 
     fn quit(&self){
         if let Some(ipc) = self.ipc_channels.as_ref(){
-            ipc.tx.send(aux::IPCMessage::EndCommunication);
+            ipc.tx.send(IPCMessage::EndCommunication);
         }
     }
 

@@ -7,7 +7,7 @@ use std::{io::{BufRead,BufReader}, collections::HashMap};
 use std::{sync::mpsc,thread};
 use clap::{Parser, ValueEnum, Args, Subcommand};
 use wlan;
-use aux::{IPC,IPCMessage};
+use threads::ipc::{IPC,IPCMessage};
 use wpa::{self, NetworkInfo, ParsedFrame};
 use crypto;
 use pcap;
@@ -346,7 +346,7 @@ impl Attack{
                         threads.push(main_ipc);
                         let hs_cpy = hs.as_ref().unwrap().clone();
                         thread::spawn(move||{
-                            wpa::password_worker(thread_ipc,hs_cpy);
+                            threads::attack::password_worker(thread_ipc,hs_cpy);
                         });
                     }
                     
