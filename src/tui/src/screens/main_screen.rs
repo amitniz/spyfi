@@ -18,10 +18,8 @@ pub struct MainScreen{
     toggle_deauth_popup: bool,
     // screen panes
     panes: Panes,
-    // captured networks
-    networks_info: HashMap<String, NetworkInfo>,
-    // captured stateful list
-    networks: StatefulList<String>,
+    // captured networks info and states
+    networks: Cell<Networks>,
     // current attacks
     attacks: AttacksDict,
     // current theme
@@ -33,8 +31,7 @@ pub struct MainScreen{
 impl Default for MainScreen{
     fn default() -> Self {
         MainScreen{
-            networks_info: HashMap::new(),
-            networks: StatefulList::default(),
+            networks: Cell::new(Networks::default()),
             theme: GlobalConfigs::get_instance().theme
                 .read()
                 .unwrap()
@@ -106,15 +103,13 @@ impl<B:Backend> Screen<B> for MainScreen{
     fn handle_input(&mut self,key:KeyEvent) -> bool{
         match key.code {
             KeyCode::Char(c) if self.panes.selected() == "attack"=>{
-                let bssid = hex::encode(self.networks_info.get(self.networks.selected().unwrap())
-                    .as_ref().unwrap().bssid.clone());
+                let bssid: BSSID = self.networks.get_mut().get_selected_network().unwrap();
                 let mut wordlist = &mut self.attacks.get_mut().get_mut(&bssid).unwrap().wordlist;
                 wordlist.push(c);
             }
 
             KeyCode::Backspace if self.panes.selected() == "attack" =>{
-                let bssid = hex::encode(self.networks_info.get(self.networks.selected().unwrap())
-                    .as_ref().unwrap().bssid.clone());
+                let bssid = self.networks.get_mut().get_selected_network().unwrap();
                 let mut wordlist = &mut self.attacks.get_mut().get_mut(&bssid).unwrap().wordlist;
                 wordlist.pop();
             }
@@ -125,20 +120,34 @@ impl<B:Backend> Screen<B> for MainScreen{
                 }             
                 match self.panes.selected().as_str(){
                     "networks" =>{
-                    self.networks.previous(); //select previous networks
-                },
-                _ =>{},
-            }},
+                        self.networks.get_mut().select_previous_network(); //select previous networks
+                    },
+                    "clients" =>{
+                        let bssid = self.networks.get_mut().get_selected_network().unwrap();
+                        if !self.networks.get_mut().has_clients(&bssid){
+                            self.networks.get_mut().select_previous_client(&bssid);
+                        }
+                    }
+                    _ =>{},
+                }
+            },
             KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('J') => {
                 if self.toggle_deauth_popup{
                     return true;
                 }             
                 match self.panes.selected().as_str(){
                     "networks" =>{
-                    self.networks.next(); //select next networks
-                },
+                        self.networks.get_mut().select_next_network(); //select next networks
+                    },
+                    "clients" => {
+                        let bssid = self.networks.get_mut().get_selected_network().unwrap();
+                        if !self.networks.get_mut().has_clients(&bssid){
+                            self.networks.get_mut().select_next_client(&bssid);
+                        }
+                    }
                 _ =>{},
-            }},
+                }
+            },
             //open configs panel
             KeyCode::Char('c') |KeyCode::Char('C') => {
                 if self.toggle_deauth_popup{
@@ -152,10 +161,9 @@ impl<B:Backend> Screen<B> for MainScreen{
                     //send deauth
                     let iface = GlobalConfigs::get_instance().get_iface();
                     //TODO: consider storing bssid as String in networkinfo
-                    let bssid = hex::encode(self.networks_info.get(self.networks.selected().unwrap())
-                        .as_ref().unwrap().bssid.clone());
-                    let station_channel = self.networks_info.get(self.networks.selected().unwrap())
-                        .as_ref().unwrap().channel.unwrap();
+                    let bssid = self.networks.get_mut().get_selected_network().unwrap();
+                    let station_channel = self.networks.get_mut().get_selected_network_info()
+                                                                    .unwrap().channel.unwrap();
                     let deauth_attack = DeauthAttack{
                         bssid,
                         client: None,
@@ -203,8 +211,7 @@ impl<B:Backend> Screen<B> for MainScreen{
                 self.panes.next();
                 //don't allow attack pane with no attack info
                 if self.panes.selected() == "attack"{
-                    let bssid = hex::encode(self.networks_info.get(self.networks.selected().unwrap())
-                    .as_ref().unwrap().bssid.clone());
+                    let bssid = self.networks.get_mut().get_selected_network().unwrap();
                     if !self.attacks.get_mut().contains_key(&bssid){
                         self.panes.next();
                     }
@@ -219,13 +226,7 @@ impl<B:Backend> Screen<B> for MainScreen{
 
     fn update(&mut self,ipc_msg: ScreenIPC) -> Option<ScreenIPC>{
         if let IPCMessage::Message(netinfo) = ipc_msg{
-            self.networks_info = netinfo;     
-            let current_state = self.networks.state.clone();
-            self.networks = StatefulList::new(self.networks_info.iter().map(|(k,_)|{k.clone()}).collect::<Vec<String>>());
-            if self.networks_info.len() > 0 && self.networks.state.selected().is_none(){
-                self.networks.next();
-            }
-            self.networks.state = current_state;
+            self.networks.get_mut().update_networks(netinfo);
         }
         //send current msg and erase it
         let out_msg = self.out_msg.clone();
@@ -286,15 +287,14 @@ impl MainScreen{
 
         let device = "all devices".to_owned(); //TODO: check selected client
 
-        let network = self.networks_info.get(self.networks.selected().unwrap()).unwrap().ssid.clone();
-        let channel = self.networks_info.get(self.networks.selected().unwrap())
-            .unwrap().channel.unwrap();
+        let ssid: String = self.networks.get_mut().get_selected_network_info().unwrap().ssid.clone();
+        let channel = self.networks.get_mut().get_selected_network_info().unwrap().channel.unwrap();
 
         let text = Paragraph::new(
             vec![
                 Spans::from(format!("Are you sure you want disconnect {} from the network {} at channel {}?",
                     device,
-                    network,
+                    ssid,
                     channel
                 )),
                 Spans::from(format!("<ENTER> Ok  <ESC> Cancel ")),
@@ -328,9 +328,8 @@ impl MainScreen{
         self.draw_attack_pane(f,chunks[2]);
         
         //update networks info pane and attack pane
-        if !self.networks.items.is_empty(){
-            let current_network = self.networks.items[self.networks.state.selected().unwrap_or(0)].clone();
-            let mut netinfo = self.networks_info.get(&current_network).unwrap().clone();
+        if !self.networks.get_mut().is_empty(){
+            let mut netinfo = self.networks.get_mut().get_selected_network_info().unwrap().clone();
             self.update_network_info_pane(f,chunks[1],&netinfo);
             self.update_attack_pane(f,chunks[2],&netinfo);
         }
@@ -388,7 +387,7 @@ impl MainScreen{
             _ => {self.theme.bg},
         }; 
 
-        let networks_block = List::new(self.networks_info.iter()
+        let networks_block = List::new(self.networks.get_mut().networks_info.iter()
             .map(|(_,v)|{ListItem::new(format!(" {} ",v.ssid))})
             .collect::<Vec<ListItem>>())
             .block(
@@ -404,7 +403,7 @@ impl MainScreen{
                     .fg(self.theme.bright_text)
                     .bg(self.theme.highlight)
         );
-        f.render_stateful_widget(networks_block, area,&mut self.networks.state);
+        f.render_stateful_widget(networks_block, area,&mut self.networks.get_mut().get_networks_state());
     }
 
     fn update_attack_pane<B>(&mut self, f:&mut Frame<B>, area: Rect, network_info: &NetworkInfo) where B:Backend{
@@ -516,10 +515,16 @@ impl MainScreen{
                     .border_style(Style::default().fg(self.theme.border_fg).bg(clients_bg))
                     .title(" Clients ")
             )
-            .style(Style::default().bg(self.theme.bg).fg(self.theme.text));
+            .style(Style::default().bg(self.theme.bg).fg(self.theme.text))
+            .highlight_style(
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(self.theme.bright_text)
+                    .bg(self.theme.highlight));
+        let bssid = self.networks.get_mut().get_selected_network().unwrap();
         //render widgets
         f.render_widget(stats_block, chunks[0]);
-        f.render_widget(clients_block, chunks[1]);
+        f.render_stateful_widget(clients_block, chunks[1],self.networks.get_mut().get_clients_state(&bssid));
         
     }
 }
@@ -529,35 +534,70 @@ impl MainScreen{
 //Note only clients must be stateful
 #[derive(Debug,Clone,Default)]
 struct Networks{
-    network_info: HashMap<BSSID,NetworkInfo>,
-    network_state: StatefulList<BSSID>,
+    pub networks_info: HashMap<BSSID,NetworkInfo>,
+    networks_state: StatefulList<BSSID>,
     clients_state: HashMap<BSSID, StatefulList<String>>,
 }
 
 impl Networks{
     // returns reference to the selected NetworkInfo
     pub fn get_selected_network_info(&self) -> Option<&NetworkInfo>{
-        let bssid: &BSSID = self.network_state.selected()?;
-        self.network_info.get(bssid)
+        let bssid: &BSSID = self.networks_state.selected()?;
+        self.networks_info.get(bssid)
+    }
+
+    pub fn is_empty(&self) -> bool{
+        self.networks_info.is_empty()
+    }
+    
+    pub fn get_selected_network(&self) -> Option<BSSID>{
+        Some(self.networks_state.selected()?.to_owned())
     }
 
     pub fn select_next_network(&mut self){
-        self.network_state.next();
+        self.networks_state.next();
+    }
+
+    pub fn select_previous_network(&mut self){
+        self.networks_state.previous();
     }
     
     pub fn select_next_client(&mut self,bssid: &str){
-        todo!();
+        self.clients_state.get_mut(bssid).unwrap().next(); 
     }
 
-    pub fn update_networks(&mut self, networks: Vec<NetworkInfo>){todo!();}
-
-    pub fn get_networks_state(&self) -> &ListState{
-        &self.network_state.state
+    pub fn select_previous_client(&mut self,bssid: &str){
+        self.clients_state.get_mut(bssid).unwrap().next(); 
+    }
+    pub fn update_networks(&mut self, networks: HashMap<BSSID, NetworkInfo>){
+        self.networks_info = networks;
+        self.networks_state.items = self.networks_info.keys().cloned().collect();
+        //create StatefulList of clients for each network
+        self.clients_state = self.networks_info.iter().map(|(k,v)|{
+            (k.clone(),
+                StatefulList::new(
+                    v.clients.iter().map(hex::encode).collect()
+                )
+            )
+        }
+        ).collect();
+        
+        if self.networks_state.selected().is_none() && !self.is_empty(){
+            self.networks_state.next();
+        }
     }
 
-    pub fn get_clients_state(&self,bssid: &str) -> Option<&ListState>{
-        let state_list = self.clients_state.get(bssid)?;
-        Some(&state_list.state)
+    pub fn get_networks_state(&mut self) -> &mut ListState{
+        &mut self.networks_state.state
+    }
+
+    pub fn has_clients(&self,bssid:&str) -> bool{
+        self.networks_info.get(bssid).unwrap().clients.is_empty()
+    }
+
+    pub fn get_clients_state(&mut self,bssid: &str) -> &mut ListState{
+        let state_list = self.clients_state.get_mut(bssid).unwrap();
+        &mut state_list.state
     }
 
 }
