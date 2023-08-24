@@ -32,9 +32,9 @@ use tui::{
 
 
 use screens::{Screen,colorscheme};
-use threads::monitor::MonitorThread;
-use threads::ipc::{IPC,IPCMessage};
-use wpa::NetworkInfo;
+use threads::{monitor::MonitorThread, AttackThread};
+use threads::ipc::{IPC,IPCMessage,AttackMsg};
+use wpa::{NetworkInfo, AttackInfo};
 
 
 // ---------------------------------- Macros ----------------------------------
@@ -63,7 +63,8 @@ lazy_static! {
 // -------------------------------- Structs -----------------------------------
 pub struct Tui{
     screen: Box<dyn Screen<CrosstermBackend<Stdout>>>,// the current screen
-    ipc_channels: Option<IPC<HashMap<String,NetworkInfo>>>, //IPC channels for communicating with monitor thread
+    monitor_ipc_channels: Option<IPC<HashMap<String,NetworkInfo>>>, //IPC channels for communicating with monitor thread
+    attack_ipc_channels: Option<IPC<AttackMsg>>,
     is_panic: bool, //permissions error state
 }
 
@@ -72,7 +73,8 @@ impl Tui{
     pub fn new() -> Self{
         Tui{
             screen:Box::new(screens::WelcomeScreen::default()),
-            ipc_channels: None,
+            monitor_ipc_channels: None,
+            attack_ipc_channels: None,
             is_panic: false,
         }
     }
@@ -86,28 +88,24 @@ impl Tui{
         let mut terminal = Terminal::new(backend)?;
         
         //create app
-        let mut res: io::Result<()> = Ok(());
+        let mut app_res: io::Result<()> = Ok(());
         loop {
             //get data from monitor thread
-            if let Some(ipc) = self.ipc_channels.as_ref(){
+            if let Some(ipc) = self.monitor_ipc_channels.as_ref(){
                 if let Ok(msg) = ipc.rx.try_recv(){
-                    match msg{
-                        IPCMessage::Message(netinfo) =>{
-                            //update screen data
-                            let res = self.screen.update(IPCMessage::Message(netinfo));
-                            if let  Some(msg) = res{
-                                ipc.tx.send(msg);
-                            }
-                        },
-                        IPCMessage::PermissionsError =>{
-                            //toggle popup permissions screen
-                            res = Err(io::Error::new(io::ErrorKind::PermissionDenied,"Spyfi cannot run without network capabilities."));
-                            self.is_panic = true;
-                        }
-                        _ =>{
-                            panic!();//shouldn't get here
-                        }
-                    }
+                    let res = self.screen.update(msg);
+                    if let Some(req) = res{
+                        app_res = self.pass_screen_request(req);
+                    } 
+                }
+            }
+            //get data from attack thread
+            if let Some(ipc) = self.attack_ipc_channels.as_ref(){
+                if let Ok(IPCMessage::Attack(attack_msg)) = ipc.rx.try_recv(){
+                    let res = self.screen.update(IPCMessage::Attack(attack_msg));
+                    if let Some(req) = res{
+                        app_res = self.pass_screen_request(req);
+                    } 
                 }
             }
             if self.is_panic{
@@ -123,7 +121,7 @@ impl Tui{
                         match key.code{
                             
                             KeyCode::Char('q') | KeyCode::Char('Q') => {
-                                res = Ok(());
+                                app_res = Ok(());
                                 break;
                             },
                             KeyCode::Char('p') => {self.randomize_theme() },
@@ -148,7 +146,7 @@ impl Tui{
         )?;
         terminal.show_cursor()?;
 
-        if let Err(err) = res{
+        if let Err(err) = app_res{
             println!("{}",err);
         }
 
@@ -156,10 +154,71 @@ impl Tui{
         Ok(())
     }
 
+    fn spawn_attack_thread(&mut self,attack_info:AttackInfo) ->io::Result<()>{
+        let (thread_tx,main_rx) = mpsc::channel();
+        let (main_tx,thread_rx) = mpsc::channel(); 
+        self.attack_ipc_channels = Some(IPC{
+            rx: main_rx,
+            tx: main_tx,
+        });
+        let thread_ipc = IPC{
+            rx:thread_rx,
+            tx:thread_tx,
+        };
+        let mut attack_thread = AttackThread::init(thread_ipc,attack_info)?; //returns error incase
+        //of invalid wordlist
+        thread::spawn(move ||{
+            attack_thread.run()
+        });
+        Ok(())
+    }
+
+    
+    // pass ipc request of the main screen to the coresponding thread
+    fn pass_screen_request(&mut self,req : IPCMessage<HashMap<String,NetworkInfo>>) ->io::Result<()>{
+        match req{
+            IPCMessage::Message(_) | IPCMessage::IOCommand(_)  =>{
+                if let Some(ipc) = &self.monitor_ipc_channels{
+                    ipc.tx.send(req);
+                }
+            },
+            IPCMessage::PermissionsError =>{
+                //toggle popup permissions screen
+                self.is_panic = true;
+                return Err(io::Error::new(io::ErrorKind::PermissionDenied,"Spyfi cannot run without network capabilities."));
+            },
+            IPCMessage::Attack(attack_msg) =>{
+                match attack_msg{
+                    AttackMsg::DeauthAttack(_) =>{
+                        if let Some(ipc) = &self.monitor_ipc_channels{
+                            ipc.tx.send(IPCMessage::Attack(attack_msg));
+                        }
+                    },
+                    AttackMsg::DictionaryAttack(attack) =>{
+                        if self.attack_ipc_channels.is_none(){//For now we don't allow more than
+                            //one attack at a time
+                            if self.spawn_attack_thread(attack).is_err(){
+                                self.screen.update(IPCMessage::Attack(AttackMsg::Error));
+                            }
+                        }      
+                    },
+                    AttackMsg::Abort =>{
+                       if let Some(ipc) = &self.attack_ipc_channels{
+                            ipc.tx.send(IPCMessage::Attack(attack_msg));
+                        } 
+                    },
+                    _=>{}
+                }
+            },
+            _=> {},
+        }
+        Ok(())
+    }
+
     fn spawn_monitor_thread(&mut self){
         let (thread_tx,main_rx) = mpsc::channel();
         let (main_tx,thread_rx) = mpsc::channel(); 
-        self.ipc_channels = Some(IPC{
+        self.monitor_ipc_channels = Some(IPC{
             rx: main_rx,
             tx: main_tx,
         });
@@ -171,7 +230,10 @@ impl Tui{
     }
 
     fn quit(&self){
-        if let Some(ipc) = self.ipc_channels.as_ref(){
+        if let Some(ipc) = self.monitor_ipc_channels.as_ref(){
+            ipc.tx.send(IPCMessage::EndCommunication);
+        }
+        if let Some(ipc) = self.attack_ipc_channels.as_ref(){
             ipc.tx.send(IPCMessage::EndCommunication);
         }
     }

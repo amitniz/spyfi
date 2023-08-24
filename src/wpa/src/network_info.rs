@@ -109,7 +109,7 @@ impl PartialEq for NetworkInfo{
 impl Eq for NetworkInfo{}
 
 impl NetworkInfo{
-    pub fn update(&mut self,other: &mut NetworkInfo){
+    pub fn update(&mut self,other: & NetworkInfo){
 
         // update the channel to be the channel of the bssid handshakes
         match &other.frame_type.as_ref().unwrap(){
@@ -117,7 +117,7 @@ impl NetworkInfo{
             _=>{},
         };
         self.signal_strength = other.signal_strength;
-        self.clients.append(other.clients.as_mut());
+        self.clients.append(other.clients.clone().as_mut());
         //remove duplications
         self.clients.sort();
         self.clients.dedup();
@@ -133,6 +133,7 @@ impl NetworkInfo{
         if !self.handshake.is_some(){
             self.handshake = other.handshake.clone();//TODO:check if needed
         }
+        
     }
 
     //adds eapol msg and create hs instance if has all of the 4 messages

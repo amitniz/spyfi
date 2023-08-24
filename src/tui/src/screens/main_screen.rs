@@ -102,6 +102,16 @@ impl<B:Backend> Screen<B> for MainScreen{
 
     fn handle_input(&mut self,key:KeyEvent) -> bool{
         match key.code {
+            KeyCode::Enter if self.panes.selected() == "attack" =>{
+                let bssid = self.networks.get_mut().get_selected_network().unwrap();
+                let mut attack: &mut AttackInfo = self.attacks.get_mut().get_mut(&bssid).unwrap();
+                if attack.wordlist.len() == 0 { return true} //make sure wordlist is not empty
+                attack.set_threads(49);//TODO: use user input
+                attack.attack();
+                let mut attack: &mut AttackInfo = self.attacks.get_mut().get_mut(&bssid).unwrap();
+                self.out_msg = Some(IPCMessage::Attack(AttackMsg::DictionaryAttack(attack.clone())));
+            },
+
             KeyCode::Char(c) if self.panes.selected() == "attack"=>{
                 let bssid: BSSID = self.networks.get_mut().get_selected_network().unwrap();
                 let mut wordlist = &mut self.attacks.get_mut().get_mut(&bssid).unwrap().wordlist;
@@ -216,10 +226,17 @@ impl<B:Backend> Screen<B> for MainScreen{
     fn update(&mut self,ipc_msg: ScreenIPC) -> Option<ScreenIPC>{
         match ipc_msg{
             IPCMessage::Message(netinfo) => {
-            self.networks.get_mut().update_networks(netinfo);
+                self.networks.get_mut().update_networks(netinfo);
             },
             IPCMessage::Attack(AttackMsg::Progress(progress)) =>{
-                todo!();
+                //TODO: make without unwrap and consider to remove attack_info from netinfo. maybe
+                //store is attacking only, or attack id
+                //find attacking network
+                let bssid = self.networks.get_mut().get_current_attack_bssid().unwrap();
+                let attack_info:&mut AttackInfo = self.networks.get_mut().get_network(&bssid).unwrap().attack_info.as_mut().unwrap();
+                attack_info.update(progress.size_of_wordlist,progress.num_of_attempts,progress.passwords_attempts.clone());
+                let attack_info:&mut AttackInfo = self.attacks.get_mut().get_mut(&bssid).unwrap();
+                attack_info.update(progress.size_of_wordlist,progress.num_of_attempts,progress.passwords_attempts);
             },
             IPCMessage::Attack(AttackMsg::Password(password)) =>{
                 todo!();
@@ -446,11 +463,15 @@ impl MainScreen{
                 width:area.width -2,
                 height: area.height -2,
             });
+        
 
+        //TODO: move attack_info init to update
         let attacks = self.attacks.get_mut();
         let bssid = hex::encode(network_info.bssid);
         if !attacks.contains_key(&bssid){
-            attacks.insert(bssid.clone(),AttackInfo::new(network_info.handshake.as_ref().unwrap().clone(),"",1));
+            let attack_info =AttackInfo::new(network_info.handshake.as_ref().unwrap().clone(),"",1);
+            attacks.insert(bssid.clone(),attack_info.clone());
+            self.networks.get_mut().get_network(&bssid).unwrap().attack_info = Some(attack_info);
             self.panes.add_pane("attack");
         }
         //get the corespond DictionaryAttack
@@ -467,6 +488,16 @@ impl MainScreen{
 
 
         f.render_widget(wordlist_block, chunks[0]);
+
+        if attack.is_attacking(){
+            let progress_block = Paragraph::new(
+                vec![
+                    Spans::from(format!(" Progress: {}/{}", attack.num_of_attempts, attack.size_of_wordlist)),
+                ]
+            ).block(Block::default());
+            f.render_widget(progress_block, chunks[1])
+        }
+
     }
 
     
@@ -548,10 +579,14 @@ struct Networks{
 
 impl Networks{
     // returns reference to the selected NetworkInfo
-    pub fn get_selected_network_info(&self) -> Option<&NetworkInfo>{
+    pub fn get_selected_network_info(&mut self) -> Option<&mut NetworkInfo>{
         let bssid: &BSSID = self.networks_state.selected()?;
-        self.networks_info.get(bssid)
+        self.networks_info.get_mut(bssid)
     }
+
+    pub fn get_network(&mut self,bssid: &str) -> Option<&mut NetworkInfo>{
+        self.networks_info.get_mut(bssid)
+    }  
 
     pub fn is_empty(&self) -> bool{
         self.networks_info.is_empty()
@@ -573,11 +608,29 @@ impl Networks{
         self.clients_state.get_mut(bssid).unwrap().next(); 
     }
 
+    pub fn get_current_attack_bssid(&mut self) -> Option<String>{
+        // self.networks_info.iter_mut().find(|(_,v)|{
+        //     v.attack_info.as_ref().is_some() && v.attack_info.as_ref().unwrap().is_attacking()
+        // }).map(|(_,v)|v.attack_info.as_mut().unwrap())
+        for (k,v) in &mut self.networks_info{
+            if v.attack_info.as_mut().is_some(){
+                return Some(k.clone())
+            }
+        }
+        None
+    }
+
     pub fn select_previous_client(&mut self,bssid: &str){
         self.clients_state.get_mut(bssid).unwrap().next(); 
     }
     pub fn update_networks(&mut self, networks: HashMap<BSSID, NetworkInfo>){
-        self.networks_info = networks;
+        for (bssid,network) in &networks{
+            if self.networks_info.contains_key(bssid){
+               self.networks_info.get_mut(bssid).unwrap().update(network); 
+            }else{
+                self.networks_info.insert(bssid.to_owned(), network.clone());
+            }
+        }
         self.networks_state.items = self.networks_info.keys().cloned().collect();
         //create StatefulList of clients for each network
         self.clients_state = self.networks_info.iter().map(|(k,v)|{
