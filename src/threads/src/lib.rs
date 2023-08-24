@@ -1,3 +1,6 @@
 pub mod ipc;
 pub mod monitor;
-pub mod attack;
+mod attack;
+
+
+pub use attack::AttackThread;

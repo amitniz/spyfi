@@ -1,7 +1,7 @@
 use crate::{
     handshake::{Handshake, EapolMsg},
     attack_info::AttackInfo,
-    consts::*, DictionaryAttack
+    consts::*
 };
 use std::{convert::TryFrom, collections::HashMap};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -93,7 +93,7 @@ pub struct NetworkInfo {
     pub last_appearance: u64,
     captured_handshakes: HashMap<Client, [Option<EapolMsg>;4]>,
     pub frame_type: Option<FrameType>,
-    pub attack_info: Option<DictionaryAttack>,
+    pub attack_info: Option<AttackInfo>,
 }
 
 impl PartialEq for NetworkInfo{

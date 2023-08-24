@@ -2,12 +2,12 @@ use std::{collections::HashMap,cell::Cell};
 
 use crate::GlobalConfigs;
 use super::*;
-use wpa::{NetworkInfo,AttackInfo, DeauthAttack, DictionaryAttack};
+use wpa::{NetworkInfo,AttackInfo};
 use hex::encode;
 use std::time::{SystemTime, UNIX_EPOCH};
-use threads::ipc::IOCommand;
+use threads::ipc::{IOCommand,AttackMsg,DeauthAttack};
 
-type AttacksDict = Cell<HashMap<String,DictionaryAttack>>;
+type AttacksDict = Cell<HashMap<String,AttackInfo>>;
 type BSSID = String;
 
 
@@ -114,10 +114,7 @@ impl<B:Backend> Screen<B> for MainScreen{
                 wordlist.pop();
             }
 
-            KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('K') => {
-                if self.toggle_deauth_popup{
-                    return true;
-                }             
+            KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('K') if !self.toggle_deauth_popup => {
                 match self.panes.selected().as_str(){
                     "networks" =>{
                         self.networks.get_mut().select_previous_network(); //select previous networks
@@ -131,10 +128,7 @@ impl<B:Backend> Screen<B> for MainScreen{
                     _ =>{},
                 }
             },
-            KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('J') => {
-                if self.toggle_deauth_popup{
-                    return true;
-                }             
+            KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('J') if !self.toggle_deauth_popup => {
                 match self.panes.selected().as_str(){
                     "networks" =>{
                         self.networks.get_mut().select_next_network(); //select next networks
@@ -149,42 +143,37 @@ impl<B:Backend> Screen<B> for MainScreen{
                 }
             },
             //open configs panel
-            KeyCode::Char('c') |KeyCode::Char('C') => {
-                if self.toggle_deauth_popup{
-                    return true;
-                }             
+            KeyCode::Char('c') |KeyCode::Char('C') if !self.toggle_deauth_popup => {
                 self.toggle_configs = !self.toggle_configs;
             },
             //open deauth popup
-            KeyCode::Enter | KeyCode::Char('d') | KeyCode::Char('D') =>{
-                if self.toggle_deauth_popup{
-                    //send deauth
-                    let iface = GlobalConfigs::get_instance().get_iface();
-                    //TODO: consider storing bssid as String in networkinfo
-                    let bssid = self.networks.get_mut().get_selected_network().unwrap();
-                    let station_channel = self.networks.get_mut().get_selected_network_info()
-                                                                    .unwrap().channel.unwrap();
-                    let deauth_attack = DeauthAttack{
-                        bssid,
-                        client: None,
-                        station_channel,
-                    };
-                    self.out_msg = Some(IPCMessage::Attack(AttackInfo::DeauthAttack(deauth_attack)));
-                }
+
+            KeyCode::Char('d') | KeyCode::Char('D') =>{
+                self.toggle_deauth_popup = true;
+            }
+
+            KeyCode::Enter if self.toggle_deauth_popup => {
+                //send deauth command to monitor thread
+                let bssid = self.networks.get_mut().get_selected_network().unwrap();
+                let station_channel = self.networks.get_mut().get_selected_network_info()
+                                                                .unwrap().channel.unwrap();
+                let deauth_attack = DeauthAttack{
+                    bssid,
+                    client: None,
+                    station_channel,
+                };
+                self.out_msg = Some(IPCMessage::Attack(AttackMsg::DeauthAttack(deauth_attack)));
                 //toggle deauth popup
                 self.toggle_deauth_popup = !self.toggle_deauth_popup;
             } 
             //close deauth popup
-            KeyCode::Esc =>{
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('Q') if self.toggle_deauth_popup =>{
                     self.toggle_deauth_popup = false;
             },
 
             //channel number
             KeyCode::Char('1') |  KeyCode::Char('2') | KeyCode::Char('3') | KeyCode::Char('4') |
-            KeyCode::Char('5') | KeyCode::Char('6') | KeyCode::Char('7') | KeyCode::Char('8') => {
-                if self.toggle_deauth_popup{
-                    return true;
-                }             
+            KeyCode::Char('5') | KeyCode::Char('6') | KeyCode::Char('7') | KeyCode::Char('8') if !self.toggle_deauth_popup => {
 
                 if self.panes.selected().as_str() == "configs"{
                     let channel = if let KeyCode::Char(i) = key.code{
@@ -225,8 +214,23 @@ impl<B:Backend> Screen<B> for MainScreen{
     }
 
     fn update(&mut self,ipc_msg: ScreenIPC) -> Option<ScreenIPC>{
-        if let IPCMessage::Message(netinfo) = ipc_msg{
+        match ipc_msg{
+            IPCMessage::Message(netinfo) => {
             self.networks.get_mut().update_networks(netinfo);
+            },
+            IPCMessage::Attack(AttackMsg::Progress(progress)) =>{
+                todo!();
+            },
+            IPCMessage::Attack(AttackMsg::Password(password)) =>{
+                todo!();
+            },
+            IPCMessage::Attack(AttackMsg::Exhausted) =>{
+                todo!();
+            },
+            IPCMessage::Attack(AttackMsg::Error) =>{
+                todo!();
+            }
+            _ =>{},
         }
         //send current msg and erase it
         let out_msg = self.out_msg.clone();
@@ -279,9 +283,9 @@ impl MainScreen{
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Percentage(45),
-                Constraint::Percentage(35),
-                Constraint::Percentage(20)]
+                Constraint::Percentage(10),
+                Constraint::Percentage(85),
+                ]
             )
             .split(centered_area);
 
@@ -292,11 +296,14 @@ impl MainScreen{
 
         let text = Paragraph::new(
             vec![
-                Spans::from(format!("Are you sure you want disconnect {} from the network {} at channel {}?",
+                Spans::from(format!("Are you sure you want disconnect {}",
                     device,
+                )),
+                Spans::from(format!("from the network {} at channel {}?",
                     ssid,
                     channel
                 )),
+                Spans::from(format!("")),
                 Spans::from(format!("<ENTER> Ok  <ESC> Cancel ")),
             ]
         ).alignment(Alignment::Center)
@@ -443,7 +450,7 @@ impl MainScreen{
         let attacks = self.attacks.get_mut();
         let bssid = hex::encode(network_info.bssid);
         if !attacks.contains_key(&bssid){
-            attacks.insert(bssid.clone(),DictionaryAttack::default());
+            attacks.insert(bssid.clone(),AttackInfo::new(network_info.handshake.as_ref().unwrap().clone(),"",1));
             self.panes.add_pane("attack");
         }
         //get the corespond DictionaryAttack
@@ -457,6 +464,7 @@ impl MainScreen{
             .borders(Borders::ALL)
             .border_style(Style::default().fg(self.theme.border_fg).bg(Color::Black))
             .title(format!(" Wordlist "))).style(Style::default().bg(Color::DarkGray).fg(Color::White));
+
 
         f.render_widget(wordlist_block, chunks[0]);
     }
@@ -494,7 +502,6 @@ impl MainScreen{
                     true =>"✅",
                     false =>"❎",
                 })),
-
                 Spans::from(format!(" last appearance: {} sec",epoch_now-network_info.last_appearance)),
             ])
             .block(

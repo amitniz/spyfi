@@ -1,16 +1,19 @@
-use crate::ipc::{IPCMessage,IPC,IOCommand};
-use wpa::{NetworkInfo,AttackInfo,DeauthAttack,DictionaryAttack};
+use crate::ipc::{IPCMessage,IPC,IOCommand,AttackMsg,DeauthAttack};
+use wpa::NetworkInfo;
 use std::sync::mpsc::{Sender,Receiver};
 use std::collections::HashMap;
 use core::time;
 
 const MAX_CHANNEL: usize = 13;
-pub type MonitorSender = Sender<IPCMessage<HashMap<String,NetworkInfo>>>;
-pub type MonitorReciever = Receiver<IPCMessage<HashMap<String,NetworkInfo>>>;
+
 type Bssid = String;
+type MonitorSender = Sender<IPCMessage<HashMap<String,NetworkInfo>>>;
+type MonitorReciever = Receiver<IPCMessage<HashMap<String,NetworkInfo>>>;
+type NetworksInfo = HashMap<Bssid,NetworkInfo>;
+
 pub struct MonitorThread{
     iface: String,
-    channels: IPC<HashMap<String,NetworkInfo>>,
+    channels: IPC<NetworksInfo>,
     networks: HashMap<Bssid, NetworkInfo>,
     sweep_mode: bool,
 }
@@ -77,16 +80,17 @@ impl MonitorThread{
                     },
                     IPCMessage::Attack(attack_info) =>{
                         match attack_info{
-                            AttackInfo::DeauthAttack(attack) =>{
+                            AttackMsg::DeauthAttack(attack) =>{
                                 wlan::switch_iface_channel(&self.iface, attack.station_channel);
                                 for _ in 0..16 {
                                     wpa::send_deauth(&self.iface, &attack.bssid, attack.client.clone());
                                 }
                                 wlan::switch_iface_channel(&self.iface,channel);
                             },
-                            AttackInfo::DictionaryAttack(attack) =>{
+                            AttackMsg::DictionaryAttack(attack) =>{
                                 todo!();
-                            }
+                            },
+                            _=>{},
                         }
                     },
                     IPCMessage::EndCommunication => {

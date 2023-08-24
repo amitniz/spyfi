@@ -6,6 +6,7 @@
 //! information from the handshake stage, collect information about near-by networks, 
 //! and send de-authentication to other BSSIDs.
 use std::io::Result;
+use handshake::EapolMsg;
 use libwifi::Frame;
 use std::io::Error;
 use hex::FromHex;
@@ -20,7 +21,7 @@ mod consts;
 
 use consts::*;
 
-pub use attack_info::{AttackInfo,DeauthAttack,DictionaryAttack};
+pub use attack_info::AttackInfo;
 pub use handshake::Handshake;
 pub use network_info::{
     ParsedFrame,
@@ -46,7 +47,7 @@ pub use network_info::{
 ///     let handshake = wpa::get_hs_from_file(pcap.unwrap(), "test", "AABBCCDDEEFF");
 /// ```
 pub fn get_hs_from_file(mut pcap: pcap::Capture<pcap::Offline>,ssid: &str, bssid: &str) -> std::io::Result<Handshake> {
-    let mut hs_msgs: [Option<libwifi::frame::QosData>; 4] = Default::default();
+    let mut hs_msgs: [Option<EapolMsg>; 4] = Default::default();
     loop { //TODO: replace with timeout
         let frame;
         match pcap.next_packet() { //listen for the next frame 
@@ -67,42 +68,21 @@ pub fn get_hs_from_file(mut pcap: pcap::Capture<pcap::Offline>,ssid: &str, bssid
         //filter only QoS Data frames
         if let Frame::QosData(qos) = parsed_frame.unwrap() {
             // check if msg type is EAPOL
-            let msg_type: u16 = ((qos.data[EAPOL_CODE_OFFSET] as u16) << 8) | qos.data[EAPOL_CODE_OFFSET+1] as u16;
-            if msg_type == EAPOL_TAG_ID {// EAPOL
-                // get hs message number
-                let msg_num: u16 = ((qos.data[EAPOL_MSG_NUM_OFFSET] as u16) << 8) | qos.data[EAPOL_MSG_NUM_OFFSET+1] as u16;
-                match msg_num {
-                    EAPOL_MSG_1 =>{
-                        // check the bssid
-                        if hex::encode(qos.header.address_3.0) == bssid{
-                            hs_msgs[0] = Some(qos);
-                        }
-                    },
-
-                    EAPOL_MSG_2 =>{
-                        if hex::encode(qos.header.address_3.0) == bssid && hs_msgs[0].is_some() {
-                            hs_msgs[1] = Some(qos);
-                        }
-                    },
-                    EAPOL_MSG_3 =>{
-                        if hex::encode(qos.header.address_3.0) == bssid && hs_msgs[1].is_some() {
-                            hs_msgs[2] = Some(qos);
-                        }
-                    },
-
-                    EAPOL_MSG_4 =>{
-                        if hex::encode(qos.header.address_3.0) == bssid && hs_msgs[2].is_some() {
-                            hs_msgs[3] = Some(qos);
-                        }
-                    },
-
-                    _ => {todo!();} //TODO: handle error with parsing
+            if let Ok(eapol) = EapolMsg::try_from(qos){
+                let msg_nu = match eapol.msg_nu{
+                    EAPOL_MSG_1 => 1,
+                    EAPOL_MSG_2 => 2,
+                    EAPOL_MSG_3 => 3,
+                    EAPOL_MSG_4 => 4,
+                    _ => panic!()
+                };
+                if hs_msgs[msg_nu -1].is_none(){
+                    hs_msgs[msg_nu -1] = Some(eapol);
                 }
-                if hs_msgs.iter().all(|m|m.is_some()){
-                    //TODO: FIX!
-                    todo!()
-                    // return Ok(Handshake::new(ssid,hs_msgs));
-                }
+            }
+
+            if hs_msgs.iter().all(|m|m.is_some()){
+                return Ok(Handshake::new(ssid,hs_msgs));
             }
         }
     }

@@ -3,12 +3,16 @@
 //!  find nearest networks and perform actions such as disconnect them 
 //! from the WiFi.
 
-use std::{io::{BufRead,BufReader}, collections::HashMap};
+use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::{sync::mpsc,thread};
 use clap::{Parser, ValueEnum, Args, Subcommand};
 use wlan;
-use threads::ipc::{IPC,IPCMessage};
-use wpa::{self, NetworkInfo, ParsedFrame};
+use threads::{
+    ipc::{IPC,AttackMsg,IPCMessage},
+    AttackThread,
+};
+use wpa::{self, NetworkInfo, ParsedFrame, AttackInfo, Handshake};
 use crypto;
 use pcap;
 use hex::encode;
@@ -318,8 +322,7 @@ impl Attack{
                     let hs;
                     match pcap{
                         Ok(cap) =>{
-                            hs = wpa::get_hs_from_file(cap, ssid, bssid);
-
+                            hs = wpa::get_hs_from_file(cap, ssid, bssid).unwrap();
                         },
                         _ =>{
                             println!("failed to open pcap:{}",self.capture.as_ref().unwrap());
@@ -327,94 +330,44 @@ impl Attack{
                         } 
                     }        
                    
-                    let mut threads:Vec<IPC<String>> = vec![];
-                    // create threads pool
-                    for _ in 0..self.threads{
-                        let (thread_tx,main_rx) = mpsc::channel();
-                        let (main_tx,thread_rx) = mpsc::channel(); 
+                    let (thread_tx,main_rx) = mpsc::channel();
+                    let (main_tx,thread_rx) = mpsc::channel(); 
 
-                        let main_ipc:IPC<String> = IPC{
-                            tx: main_tx,
-                            rx: main_rx,
-                        };
+                    let main_ipc:IPC<AttackMsg> = IPC{
+                        tx: main_tx,
+                        rx: main_rx,
+                    };
 
-                        let thread_ipc:IPC<String> = IPC{
-                            tx: thread_tx,
-                            rx: thread_rx,
-                        };
-                        
-                        threads.push(main_ipc);
-                        let hs_cpy = hs.as_ref().unwrap().clone();
-                        thread::spawn(move||{
-                            threads::attack::password_worker(thread_ipc,hs_cpy);
-                        });
-                    }
+                    let thread_ipc:IPC<AttackMsg> = IPC{
+                        tx: thread_tx,
+                        rx: thread_rx,
+                    };
                     
-                    let mut jobs_count = 0;
-                    let mut next_thread: i32 = 0;
-                    //TODO:make it the right way
+                    let attack_info;
                     if self.phones{
-
-                        let prefixes = vec!["050","052","053","054","057"];
-                        for prefix in &prefixes{
-                            for i in 0..10e7 as i32 {
-                                let passwd = format!("{}{:0>7}",prefix,i).to_owned();
-                                jobs_count += 1;
-                                threads[next_thread as usize].tx.send(IPCMessage::Message(passwd.to_owned()));
-                                next_thread = aux::modulos(next_thread+1, threads.len() as i32);
-                            }
-                        }
-
-                    }else{
-
-                        // read passwords from dictionary
+                        todo!();
+                    }else{ //wordlist
                         let wordlist = self.wordlist.as_ref().unwrap();
-                        let path = std::fs::File::open(&self.wordlist.as_ref().unwrap()).unwrap();
-                        let reader = BufReader::new(path);
-                        
-                        
-                        for line in reader.lines(){
-                            let line = match line.as_ref(){
-                                Ok(pass) => {
-                                    if pass.len() < 8{
-                                        println!("[-] invalid size: {}",pass);
-                                        continue;
-                                    }
-                                    pass
-                                },
-                                Err(_) => {continue}
-                            };
-                            jobs_count += 1;
-                            threads[next_thread as usize].tx.send(IPCMessage::Message(line.to_owned()));
-                            next_thread = aux::modulos(next_thread+1, threads.len() as i32);
-                        }
+                        attack_info = AttackInfo::new(hs,wordlist, self.threads as u8);
+                        thread::spawn(move||{AttackThread::init(thread_ipc,attack_info).unwrap().run()});
                     }
 
+                    loop{
+                        match main_ipc.rx.recv().unwrap(){
+                            IPCMessage::Attack(AttackMsg::Progress(progress)) =>{
 
-                    while jobs_count > 0{
-                        for thread in &threads{
-                            if let Ok(ipc_msg) = thread.rx.try_recv(){
-                                match ipc_msg{
-                                    IPCMessage::Message(msg) =>{
-                                        match msg.as_str(){
-                                            "wrong" =>{
-                                                jobs_count -= 1;
-                                            },
-                                            _ =>{
-                                                println!("[+] Found password: {}",msg);
-                                                //kill all threads
-                                                for thread in &threads{
-                                                    thread.tx.send(IPCMessage::EndCommunication);
-                                                }
-                                                return;
-                                            }
-                                        }
-                                    },
-                                    _ =>{
-                                        continue;
-                                    }
+                                println!("\x1b[25l");
+                                println!("[*] progress: {}/{}",progress.num_of_attempts,progress.size_of_wordlist);
+                                for i in 0..10{
+                                    println!("{:-100}",progress.passwords_attempts[i]);
                                 }
-                            }        
+                                print!("\x1b[{}A",12);
+                            },
+                            IPCMessage::Attack(AttackMsg::Password(password)) =>{
+                                println!("found password: {}",password);
+                                return;
+                            },
+                            _=>{break;}
                         }
                     }
                     println!("[!] Exhausted.")

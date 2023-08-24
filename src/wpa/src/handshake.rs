@@ -55,6 +55,11 @@ impl Handshake{
         aux::compare_arrays(&mic,&self.mic)
     }
 
+
+    pub fn get_bssid(self) ->String{
+        hex::encode(self.station_mac)
+    }
+
 }
 
 impl fmt::Display for Handshake{

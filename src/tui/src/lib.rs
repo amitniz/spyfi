@@ -64,6 +64,7 @@ lazy_static! {
 pub struct Tui{
     screen: Box<dyn Screen<CrosstermBackend<Stdout>>>,// the current screen
     ipc_channels: Option<IPC<HashMap<String,NetworkInfo>>>, //IPC channels for communicating with monitor thread
+    is_panic: bool, //permissions error state
 }
 
 impl Tui{
@@ -72,6 +73,7 @@ impl Tui{
         Tui{
             screen:Box::new(screens::WelcomeScreen::default()),
             ipc_channels: None,
+            is_panic: false,
         }
     }
 
@@ -84,9 +86,9 @@ impl Tui{
         let mut terminal = Terminal::new(backend)?;
         
         //create app
-        let res: io::Result<()>;
+        let mut res: io::Result<()> = Ok(());
         loop {
-            //get data from thread
+            //get data from monitor thread
             if let Some(ipc) = self.ipc_channels.as_ref(){
                 if let Ok(msg) = ipc.rx.try_recv(){
                     match msg{
@@ -98,14 +100,18 @@ impl Tui{
                             }
                         },
                         IPCMessage::PermissionsError =>{
-                            //popup permissions screen
-                            todo!("permissions error");
+                            //toggle popup permissions screen
+                            res = Err(io::Error::new(io::ErrorKind::PermissionDenied,"Spyfi cannot run without network capabilities."));
+                            self.is_panic = true;
                         }
                         _ =>{
                             panic!();//shouldn't get here
                         }
                     }
                 }
+            }
+            if self.is_panic{
+                break;
             }
             terminal.draw(|f| self.screen.set_layout(f))?;
             //read keyboard events
@@ -121,7 +127,7 @@ impl Tui{
                                 break;
                             },
                             KeyCode::Char('p') => {self.randomize_theme() },
-                            KeyCode::Enter => {
+                            KeyCode::Enter => { //choosing interface
                                 self.screen =Box::new(screens::MainScreen::default());
                                 self.spawn_monitor_thread(); //start monitor thread
                             }
@@ -143,7 +149,7 @@ impl Tui{
         terminal.show_cursor()?;
 
         if let Err(err) = res{
-            println!("{:?}",err);
+            println!("{}",err);
         }
 
         self.quit();// close all threads
