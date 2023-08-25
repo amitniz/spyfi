@@ -3,7 +3,6 @@
 //!  find nearest networks and perform actions such as disconnect them 
 //! from the WiFi.
 
-use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::{sync::mpsc,thread};
 use clap::{Parser, ValueEnum, Args, Subcommand};
@@ -12,7 +11,7 @@ use threads::{
     ipc::{IPC,AttackMsg,IPCMessage},
     AttackThread,
 };
-use wpa::{self, NetworkInfo, ParsedFrame, AttackInfo, Handshake};
+use wpa::{self, NetworkInfo, ParsedFrame, AttackInfo};
 use crypto;
 use pcap;
 use hex::encode;
@@ -425,9 +424,9 @@ fn networks_pretty_print(networks:&HashMap<String,NetworkInfo>){
         lines_num += 2;
 
         if !station.clients.is_empty(){
-            println!("{:^15}|",hex::encode(station.clients[0]));
+            println!("{:^15}|",station.clients[0].mac);
             for client in &station.clients[1..]{
-                println!("{:>67}  |",hex::encode(client));
+                println!("{:>67}  |",client.mac);
             }
             lines_num += station.clients.len()-1;
         }else{

@@ -5,11 +5,11 @@ use crate::{
 };
 use std::{convert::TryFrom, collections::HashMap};
 use std::time::{SystemTime, UNIX_EPOCH};
+use itertools::Itertools;
 use libwifi::Addresses;
 use core::fmt;
 
 
-type Client = String;
 
 // simple macro for implementing TryFrom Frame variants to NetworkInfo
 macro_rules! impl_try_from {
@@ -63,7 +63,6 @@ macro_rules! impl_try_from {
                     protocol: identify_protocol(value.station_info.data),
                     last_appearance: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
                     frame_type: None,
-                    attack_info: None ,
                     }
                 )
             }
@@ -87,13 +86,12 @@ pub struct NetworkInfo {
     pub ssid: String,
     pub channel: Option<u8>,
     pub signal_strength: Option<i8>,
-    pub clients: Vec<[u8;6]>,
+    pub clients: Vec<Client>,
     pub protocol: String,
     pub handshake: Option<Handshake>,
     pub last_appearance: u64,
-    captured_handshakes: HashMap<Client, [Option<EapolMsg>;4]>,
+    captured_handshakes: HashMap<String, [Option<EapolMsg>;4]>,
     pub frame_type: Option<FrameType>,
-    pub attack_info: Option<AttackInfo>,
 }
 
 impl PartialEq for NetworkInfo{
@@ -119,8 +117,10 @@ impl NetworkInfo{
         self.signal_strength = other.signal_strength;
         self.clients.append(other.clients.clone().as_mut());
         //remove duplications
-        self.clients.sort();
-        self.clients.dedup();
+        self.clients = self.clients.clone().into_iter()
+            .sorted_by(|a,b|Ord::cmp(&a.mac,&b.mac))
+            .dedup_by(|x,y|x.mac ==y.mac).collect();
+
         self.last_appearance = other.last_appearance;
 
         if self.ssid == "unknown"{
@@ -198,7 +198,7 @@ impl fmt::Display for NetworkInfo {
             hex::encode(self.bssid)
         );
         for client in &self.clients{
-            write!(f,"{}\n", hex::encode(client));
+            write!(f,"{}\n", client.mac);
         }
         Ok(())
     }
@@ -231,10 +231,14 @@ impl TryFrom<libwifi::frame::QosNull> for NetworkInfo {
             false => { value.dest().0 }
         };
         
-         let clients: Vec<[u8;6]>;
+         let clients: Vec<Client>;
          // make sure client is not broadcast
          if !aux::compare_arrays(&client,&[0xff,0xff,0xff,0xff,0xff,0xff]){
-             clients = vec![client];
+             clients = vec![
+                 Client{
+                     mac:hex::encode(client),
+                     channel:0
+                 }];
          }else{
              clients = vec![];
          }
@@ -251,7 +255,6 @@ impl TryFrom<libwifi::frame::QosNull> for NetworkInfo {
                 protocol: "unknown".to_owned(),
                 last_appearance: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
                 frame_type: None,
-                attack_info: None,
             }
         )
     }
@@ -362,4 +365,10 @@ fn identify_protocol(data: Vec<(u8,Vec<u8>)>) -> String{
         }
     }
     return "unknown".to_owned()
+}
+
+#[derive(Debug,Clone)]
+pub struct Client{
+    pub mac: String,
+    pub channel: u8,
 }

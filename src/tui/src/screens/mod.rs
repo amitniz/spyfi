@@ -6,7 +6,7 @@ use threads::ipc::IPCMessage;
 use tui::{
     backend::Backend,
     layout::{Rect, Constraint, Direction, Layout,Alignment},
-    widgets::{Block, Borders,Paragraph,ListItem,ListState,List,Wrap, Clear},
+    widgets::{Block, Borders,Paragraph,ListItem,ListState,List,Wrap, Clear,Gauge},
     text::{Span,Spans},
     style::{Color,Style,Modifier},
     Frame

@@ -1,3 +1,5 @@
+use std::thread::Thread;
+
 use crate::Handshake;
 
 const MAX_THREADS: u8 = 150;
@@ -12,8 +14,9 @@ pub struct AttackInfo{
     pub previous_attempts: Vec<String>,
     pub size_of_wordlist: usize,
     pub num_of_attempts: usize,
-    pub network_password: String,
+    pub network_password: Option<String>,
     pub is_attacking: bool,
+    pub input_selection: InputSelection,
 }
 
 
@@ -27,8 +30,9 @@ impl AttackInfo{
             size_of_wordlist:0,
             num_of_attempts:0,
             previous_attempts: vec![],
-            network_password: "".to_owned(),
+            network_password: None,
             is_attacking: false,
+            input_selection: InputSelection::Wordlist,
         }
     }
 
@@ -38,7 +42,7 @@ impl AttackInfo{
             self.size_of_wordlist = size_of_wordlist;
         }
         self.num_of_attempts = num_of_attempts;
-        self.previous_attempts = previous_attempts;
+        self.previous_attempts = [self.previous_attempts.clone(),previous_attempts].concat();
     }
 
     pub fn attack(&mut self){
@@ -63,9 +67,45 @@ impl AttackInfo{
             false => threads
         };
     }
+    
+    pub fn set_password(&mut self,password:&str){
+        self.network_password = Some(password.to_owned());
+    }
 
+    pub fn cracked(&self) -> Option<String>{
+        self.network_password.clone()
+    }
+
+    pub fn progress(&self) -> u16{
+        match self.size_of_wordlist{
+            0=> 0,
+            _=> (100*self.num_of_attempts/self.size_of_wordlist) as u16
+        }
+    }
 
     pub fn is_attacking(&self) -> bool{
         self.is_attacking
     }
+
+    pub fn get_input_selection(&self)-> &str{
+        match self.input_selection{
+            InputSelection::Wordlist => "wordlist",
+            InputSelection::Threads => "threads"
+        }
+    }
+
+    pub fn change_selection(&mut self){
+        match self.input_selection{
+            InputSelection::Wordlist => self.input_selection = InputSelection::Threads,
+            InputSelection::Threads  => self.input_selection =InputSelection::Wordlist
+        }
+    }
+}
+
+
+// stores the input selection for the user wordlist/threads
+#[derive(Debug,Copy,Clone)]
+pub enum InputSelection{
+    Wordlist,
+    Threads,
 }

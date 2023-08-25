@@ -54,3 +54,4 @@ pub fn signal_icon(signal_strength: i8) -> String{
         signals[0].to_owned()
     }
 }
+

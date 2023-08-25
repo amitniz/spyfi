@@ -16,6 +16,7 @@ pub struct MonitorThread{
     channels: IPC<NetworksInfo>,
     networks: HashMap<Bssid, NetworkInfo>,
     sweep_mode: bool,
+    channel: u8,
 }
 
 impl MonitorThread{
@@ -28,16 +29,16 @@ impl MonitorThread{
             },
             networks: HashMap::new(),
             sweep_mode: false,
+            channel: wlan::get_iface_channel(iface).unwrap()
         }
 
     }
 
     pub fn run(&mut self){
-        let mut channel = 0;
         loop{
             if self.sweep_mode{ //iterate channel if sweep mode is on
-                channel = aux::modulos((channel+1) as i32,(MAX_CHANNEL+1) as i32) as u8;
-                wlan::switch_iface_channel(&self.iface, channel);
+                self.channel = aux::modulos((self.channel+1) as i32,(MAX_CHANNEL+1) as i32) as u8;
+                wlan::switch_iface_channel(&self.iface, self.channel);
             }
             //listen for new frames
             match wpa::listen_and_collect(&self.iface, time::Duration::from_secs(1)){
@@ -45,6 +46,10 @@ impl MonitorThread{
                     for msg in captured_msgs{
                         match msg{
                             wpa::ParsedFrame::Network(mut netinfo)=>{
+                                //update client channel if found one
+                                if !netinfo.clients.is_empty(){
+                                    netinfo.clients[0].channel = self.channel;
+                                }
                                 self.networks.entry(hex::encode(netinfo.bssid))
                                     .and_modify(|e| e.update(&mut netinfo))
                                     .or_insert(netinfo);
@@ -73,6 +78,7 @@ impl MonitorThread{
                             },
                             IOCommand::ChangeChannel(c) =>{
                                 wlan::switch_iface_channel(&self.iface, c);
+                                self.channel = c;
                                 self.sweep_mode = false;
                             },
                             _ =>{}//do nothing
@@ -81,14 +87,9 @@ impl MonitorThread{
                     IPCMessage::Attack(attack_info) =>{
                         match attack_info{
                             AttackMsg::DeauthAttack(attack) =>{
-                                wlan::switch_iface_channel(&self.iface, attack.station_channel);
                                 for _ in 0..16 {
                                     wpa::send_deauth(&self.iface, &attack.bssid, attack.client.clone());
                                 }
-                                wlan::switch_iface_channel(&self.iface,channel);
-                            },
-                            AttackMsg::DictionaryAttack(attack) =>{
-                                todo!();
                             },
                             _=>{},
                         }

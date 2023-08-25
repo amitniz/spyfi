@@ -8,8 +8,7 @@ use crate::ipc::{IPC,IPCMessage,AttackMsg, AttackProgress};
 use wpa::{Handshake,AttackInfo};
 
 
-const JOB_SIZE: usize = 31;
-
+const JOB_SIZE: usize = 36;
 type AttackSender = Sender<IPCMessage<AttackMsg>>;
 type AttackReciever = Receiver<IPCMessage<AttackMsg>>;
 
@@ -33,6 +32,7 @@ impl AttackThread{
                 }
             }).collect();
             //increment num of attempts
+            if passwords_list.len() == 0{ return;}
             self.attack_info.num_of_attempts += passwords_list.len();
             //send to thread
             worker.tx.send(Job::Wordlist(passwords_list.clone()));
@@ -76,7 +76,7 @@ impl AttackThread{
             //spawn the thread
             let hs = self.attack_info.hs.clone();
             thread::spawn(move||{
-                password_worker(thread_ipc,hs);
+                password_worker(thread_ipc, hs);
             });
         } 
         
@@ -100,7 +100,7 @@ impl AttackThread{
                     match job{
                         Job::Found(password) => {
                             self.ipc_channels.tx.send(IPCMessage::Attack(AttackMsg::Password(password)));
-                            break;
+                           //TODO: break didn't allow the main thread to read it before it closed. close thread by message from the thread
                         },
                         Job::Done =>{
                             self.send_job_to_worker(thread, reader.by_ref());
