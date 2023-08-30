@@ -1,10 +1,11 @@
 use std::{
-    io::{self, BufReader,BufRead, Read},
+    io::{self, BufReader,BufRead, Read, Write},
     fs,
     sync::mpsc::{channel,Sender,Receiver},
-    thread, borrow::BorrowMut
+    thread,
 };
 use crate::ipc::{IPC,IPCMessage,AttackMsg, AttackProgress};
+use aux::debug_log;
 use wpa::{Handshake,AttackInfo};
 
 
@@ -22,15 +23,21 @@ pub struct AttackThread{
 }
 
 
-impl AttackThread{
+fn readbuf_to_iter(buf: &mut dyn BufRead) -> impl Iterator<Item = String>{
+        buf.lines().take(JOB_SIZE).filter_map(|line|{
+            match line{
+                Ok(password) => Some(password),
+                Err(_) => None,
+            }
+        }).collect::<Vec<String>>().into_iter()
+}
 
-    fn send_job_to_worker(&mut self, worker: &JobIPC,buf: &mut dyn BufRead){
-            let passwords_list:Vec<String> = buf.lines().take(JOB_SIZE).filter_map(|line|{
-                match line{
-                    Ok(password) => Some(password),
-                    Err(_) => None,
-                }
-            }).collect();
+impl AttackThread{
+    
+
+    fn send_job_to_worker<I>(&mut self, worker: &JobIPC,iterator:I)
+        where I:Iterator<Item = String> {
+            let passwords_list:Vec<String> = iterator.collect();
             //increment num of attempts
             if passwords_list.len() == 0{ return;}
             self.attack_info.num_of_attempts += passwords_list.len();
@@ -79,13 +86,30 @@ impl AttackThread{
                 password_worker(thread_ipc, hs);
             });
         } 
-        
-        //read wordlist
-        let f = fs::File::open(&self.attack_info.wordlist)?;
-        let mut reader = BufReader::new(f);
-       
+        let mut phones = None;
+        let mut reader = None;
+        let generator_mode: bool;
+        // generator/ wordlist
+        if self.attack_info.wordlist.starts_with("#phone"){
+            generator_mode = true;
+            let prefix = self.attack_info.wordlist.split(" ").collect::<Vec<&str>>()[1];
+            phones = Some(aux::PhoneNumbers::new(prefix));
+        }else{
+            generator_mode = false;
+            //read wordlist
+            let f = fs::File::open(&self.attack_info.wordlist)?;
+            reader = Some(BufReader::new(f));
+        }
+
+
         for thread in &threads{
-            self.send_job_to_worker(thread, reader.by_ref());
+            if generator_mode{
+                let iterator = phones.as_mut().unwrap().by_ref().take(JOB_SIZE);
+                self.send_job_to_worker(thread,iterator);
+            }else{
+                let iterator = readbuf_to_iter(reader.as_mut().unwrap().by_ref());
+                self.send_job_to_worker(thread,iterator);
+            }
         }
 
         loop{
@@ -103,7 +127,13 @@ impl AttackThread{
                            //TODO: break didn't allow the main thread to read it before it closed. close thread by message from the thread
                         },
                         Job::Done =>{
-                            self.send_job_to_worker(thread, reader.by_ref());
+                            if generator_mode{
+                                let iterator = phones.as_mut().unwrap().by_ref().take(JOB_SIZE);//readbuf_to_iter(reader.by_ref());
+                                self.send_job_to_worker(thread,iterator);
+                            }else{
+                                let iterator = readbuf_to_iter(reader.as_mut().unwrap().by_ref());
+                                self.send_job_to_worker(thread,iterator);
+                            }
                         },
                         _ => {},
                     }
@@ -119,6 +149,11 @@ impl AttackThread{
     }
 
     fn count_words(wordlist:&str) -> io::Result<usize>{
+        if wordlist.starts_with("#"){
+            //TODO: make in the right way
+            let prefix = wordlist.split(" ").collect::<Vec<&str>>()[1];
+            return Ok(usize::pow(10,10-prefix.len().min(10) as u32));
+        }
         let f = fs::File::open(wordlist)?;
         let reader = BufReader::new(f);
         Ok(reader.lines().count())

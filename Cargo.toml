@@ -1,5 +1,5 @@
 [workspace]
-members = ["src/tui","src/wlan", "src/aux","src/cli","src/wpa"]
+members = ["src/tui","src/wlan", "src/aux","src/cli","src/wpa","src/crypto","src/threads"]
 
 [package]
 name = "spyfi"
@@ -15,3 +15,4 @@ aux = {path="src/aux"}
 cli = {path = "src/cli"}
 tui = {path = "src/tui"}
 crypto = {path = "src/crypto"}
+threads = {path = "src/threads"}

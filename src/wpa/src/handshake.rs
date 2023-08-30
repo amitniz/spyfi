@@ -1,5 +1,6 @@
 use crate::consts::*; //import crate defines
 use std::time::{SystemTime, UNIX_EPOCH};
+use aux::debug_log;
 use libwifi::Addresses;
 use core::fmt;
 
@@ -30,7 +31,7 @@ pub struct Handshake{
 impl Handshake{
     // parse the 4 handshake packets
     pub fn new(ssid: &str, hs_pkts:[Option<EapolMsg>;4]) -> Handshake{
-       Handshake { 
+        Handshake { 
             ssid: ssid.to_owned(),
             a_nonce: hs_pkts[0].as_ref().unwrap().msg.data[EAPOL_NONCE_OFFSET..EAPOL_NONCE_OFFSET+32].try_into().unwrap(),
             s_nonce: hs_pkts[1].as_ref().unwrap().msg.data[EAPOL_NONCE_OFFSET..EAPOL_NONCE_OFFSET+32].try_into().unwrap(),

@@ -125,16 +125,19 @@ impl<B:Backend> Screen<B> for MainScreen{
                 let attack_info = self.attacks.get_mut().get_mut(&bssid).unwrap();
                 attack_info.change_selection();
             }
-            //
-            //channel number
-            KeyCode::Char(d) if d.is_digit(10) && self.panes.selected() =="attack" => {
 
+            KeyCode::Char(c) if self.panes.selected() == "attack" =>{
                 let bssid: BSSID = self.networks.get_mut().get_selected_network().unwrap();
                 let attack_info = self.attacks.get_mut().get_mut(&bssid).unwrap();
-                if attack_info.get_input_selection() == "threads"{
+                if attack_info.get_input_selection() == "wordlist"{
+                    let mut wordlist = &mut self.attacks.get_mut().get_mut(&bssid).unwrap().wordlist;
+                    wordlist.push(c);
+                }
+
+                else if c.is_digit(10) && attack_info.get_input_selection() == "threads"{
                     //add digit to current num of threads
                     let mut num_of_threads: usize = attack_info.num_of_threads as usize;
-                    num_of_threads = num_of_threads*10 + d.to_digit(10).unwrap() as usize;
+                    num_of_threads = num_of_threads*10 + c.to_digit(10).unwrap() as usize;
                     attack_info.num_of_threads = match num_of_threads < 250{
                         true => num_of_threads as u8,
                         false => 250,
@@ -143,14 +146,6 @@ impl<B:Backend> Screen<B> for MainScreen{
                 }
             }
 
-            KeyCode::Char(c) if self.panes.selected() == "attack"=>{
-                let bssid: BSSID = self.networks.get_mut().get_selected_network().unwrap();
-                let attack_info = self.attacks.get_mut().get_mut(&bssid).unwrap();
-                if attack_info.get_input_selection() == "wordlist"{
-                    let mut wordlist = &mut self.attacks.get_mut().get_mut(&bssid).unwrap().wordlist;
-                    wordlist.push(c);
-                }
-            }
 
             KeyCode::Backspace if self.panes.selected() == "attack" =>{
                 let bssid = self.networks.get_mut().get_selected_network().unwrap();
@@ -162,7 +157,7 @@ impl<B:Backend> Screen<B> for MainScreen{
                 
                 else if attack_info.get_input_selection() == "threads"{
                     attack_info.num_of_threads = match attack_info.num_of_threads/10{
-                        0 => 1,
+                        0 => 0,
                         n => n,
                     };
                 }
@@ -750,7 +745,7 @@ fn draw_attack_status<B>(f: &mut Frame<B>,area: Rect, attack_info: &mut AttackIn
         // progress gauge
         let progress_gauge =Gauge::default() .block(Block::default().borders(Borders::ALL).title("Progress"))
         .gauge_style(Style::default().fg(Color::White).bg(Color::Black).add_modifier(Modifier::ITALIC))
-        .percent(attack_info.progress());
+        .percent(attack_info.progress().min(100));
         f.render_widget(progress_gauge, chunks[0]);
 
         //progress stats
