@@ -94,8 +94,8 @@ impl Tui{
             if let Some(ipc) = self.monitor_ipc_channels.as_ref(){
                 if let Ok(msg) = ipc.rx.try_recv(){
                     let res = self.screen.update(msg);
-                    if let Some(req) = res{
-                        app_res = self.pass_screen_request(req);
+                    if let Some(res) = res{
+                        app_res = self.pass_screen_request(res);
                     } 
                 }
             }
@@ -120,7 +120,7 @@ impl Tui{
                         // GLOBAL SHORTKEYS
                         match key.code{
                             
-                            KeyCode::Char('q') | KeyCode::Char('Q') => {
+                            KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
                                 app_res = Ok(());
                                 break;
                             },
@@ -161,7 +161,7 @@ impl Tui{
             rx: main_rx,
             tx: main_tx,
         });
-        let thread_ipc = IPC{
+        let thread_ipc = IPC{ //channels stored in the generated thread 
             rx:thread_rx,
             tx:thread_tx,
         };
@@ -195,7 +195,7 @@ impl Tui{
                         }
                     },
                     AttackMsg::DictionaryAttack(attack) =>{
-                        if self.attack_ipc_channels.is_none(){//For now we don't allow more than
+                        if self.attack_ipc_channels.is_none(){//Note: For now we don't allow more than
                             //one attack at a time
                             if self.spawn_attack_thread(attack).is_err(){
                                 self.screen.update(IPCMessage::Attack(AttackMsg::Error));
@@ -203,8 +203,11 @@ impl Tui{
                         }      
                     },
                     AttackMsg::Abort =>{
-                       if let Some(ipc) = &self.attack_ipc_channels{
+                        if let Some(ipc) = &self.attack_ipc_channels{
+                            // pass the attack message to the attack thread
                             ipc.tx.send(IPCMessage::Attack(attack_msg));
+                            // delete the current ipc channels to the attack thread
+                            self.attack_ipc_channels = None;
                         } 
                     },
                     _=>{}

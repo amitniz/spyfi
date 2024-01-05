@@ -4,7 +4,8 @@ use std::sync::mpsc::{Sender,Receiver};
 use std::collections::HashMap;
 use core::time;
 
-const MAX_CHANNEL: usize = 13;
+const MAX_CHANNEL: usize = 10;
+const DEAUTH_MSGS: usize = 16;
 
 type Bssid = String;
 type MonitorSender = Sender<IPCMessage<HashMap<String,NetworkInfo>>>;
@@ -46,10 +47,6 @@ impl MonitorThread{
                     for msg in captured_msgs{
                         match msg{
                             wpa::ParsedFrame::Network(mut netinfo)=>{
-                                //update client channel if found one
-                                if !netinfo.clients.is_empty(){
-                                    netinfo.clients[0].channel = self.channel;
-                                }
                                 self.networks.entry(hex::encode(netinfo.bssid))
                                     .and_modify(|e| e.update(&mut netinfo))
                                     .or_insert(netinfo);
@@ -87,7 +84,7 @@ impl MonitorThread{
                     IPCMessage::Attack(attack_info) =>{
                         match attack_info{
                             AttackMsg::DeauthAttack(attack) =>{
-                                for _ in 0..16 {
+                                for _ in 0..DEAUTH_MSGS {
                                     wpa::send_deauth(&self.iface, &attack.bssid, attack.client.clone());
                                 }
                             },

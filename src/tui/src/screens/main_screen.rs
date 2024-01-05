@@ -2,14 +2,6 @@
 *   The file contains the code for the main screen of the TUI
 */
 
-/*
-* TODOs:
-* 1. get rid of update functions, only draw function is needed. 
-* states would change by 'update' and keyboard-events.
-* draw function should not belong to any struct and only printing without changing the states of
-* the screen
-* 2. create a Style instance for blocks and texts
-*/
 
 use std::{collections::HashMap,cell::Cell};
 
@@ -42,6 +34,7 @@ pub struct MainScreen{
 }
 
 impl Default for MainScreen{
+
     fn default() -> Self {
         MainScreen{
             networks: Cell::new(Networks::default()),
@@ -111,22 +104,31 @@ impl<B:Backend> Screen<B> for MainScreen{
     // handles keyboard events
     fn handle_input(&mut self,key:KeyEvent) -> bool{
         match key.code {
-            KeyCode::Enter if self.panes.selected() == "attack" =>{
+            KeyCode::Enter if self.panes.selected() == "attack" && !self.networks.get_mut().is_currently_attacking() =>{
                 let bssid = self.networks.get_mut().get_selected_network().unwrap();
                 let mut attack: &mut AttackInfo = self.attacks.get_mut().get_mut(&bssid).unwrap();
-                if attack.wordlist.len() == 0 { return true} //make sure wordlist is not empty
-                attack.attack();
+                if attack.wordlist.len() == 0 { return true} //make sure wordlist string is not empty
+                attack.attack(); //set the attack status to active
                 self.networks.get_mut().attack(&bssid);
                 self.out_msg = Some(IPCMessage::Attack(AttackMsg::DictionaryAttack(attack.clone())));
+            },
+
+
+            KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc if self.networks.get_mut().is_currently_attacking() =>{
+                let bssid = self.networks.get_mut().get_selected_network().unwrap();
+                let mut attack: &mut AttackInfo = self.attacks.get_mut().get_mut(&bssid).unwrap();
+                attack.abort(); //set the attack status to inactive
+                self.networks.get_mut().abort_current_attack();
+                self.out_msg = Some(IPCMessage::Attack(AttackMsg::Abort));
             },
 
             KeyCode::Right | KeyCode::Left if self.panes.selected() =="attack" =>{
                 let bssid: BSSID = self.networks.get_mut().get_selected_network().unwrap();
                 let attack_info = self.attacks.get_mut().get_mut(&bssid).unwrap();
                 attack_info.change_selection();
-            }
+            },
 
-            KeyCode::Char(c) if self.panes.selected() == "attack" =>{
+            KeyCode::Char(c) if self.panes.selected() == "attack" && !self.networks.get_mut().is_currently_attacking()=>{
                 let bssid: BSSID = self.networks.get_mut().get_selected_network().unwrap();
                 let attack_info = self.attacks.get_mut().get_mut(&bssid).unwrap();
                 if attack_info.get_input_selection() == "wordlist"{
@@ -134,7 +136,7 @@ impl<B:Backend> Screen<B> for MainScreen{
                     wordlist.push(c);
                 }
 
-                else if c.is_digit(10) && attack_info.get_input_selection() == "threads"{
+                else if c.is_digit(10) && attack_info.get_input_selection() == "threads" && !self.networks.get_mut().is_currently_attacking(){
                     //add digit to current num of threads
                     let mut num_of_threads: usize = attack_info.num_of_threads as usize;
                     num_of_threads = num_of_threads*10 + c.to_digit(10).unwrap() as usize;
@@ -147,7 +149,7 @@ impl<B:Backend> Screen<B> for MainScreen{
             }
 
 
-            KeyCode::Backspace if self.panes.selected() == "attack" =>{
+            KeyCode::Backspace if self.panes.selected() == "attack" && !self.networks.get_mut().is_currently_attacking()=>{
                 let bssid = self.networks.get_mut().get_selected_network().unwrap();
                 let attack_info = self.attacks.get_mut().get_mut(&bssid).unwrap();
                 if attack_info.get_input_selection() == "wordlist"{
@@ -197,7 +199,7 @@ impl<B:Backend> Screen<B> for MainScreen{
             },
             //open deauth popup
 
-            KeyCode::Char('d') | KeyCode::Char('D') =>{
+            KeyCode::Char('d') | KeyCode::Char('D') if self.panes.selected() != "attack" =>{
                 self.toggle_deauth_popup = true;
             }
 
@@ -206,9 +208,16 @@ impl<B:Backend> Screen<B> for MainScreen{
                 let bssid = self.networks.get_mut().get_selected_network().unwrap();
                 let station_channel = self.networks.get_mut().get_selected_network_info()
                                                                 .unwrap().channel.unwrap();
+
+
+                let client: Option<String> = match self.panes.selected().as_str(){
+                    "clients" => self.networks.get_mut().get_selected_client(),
+                    _ => None
+                };
+
                 let deauth_attack = DeauthAttack{
                     bssid,
-                    client: None,
+                    client: client,
                     station_channel,
                 };
                 self.out_msg = Some(IPCMessage::Attack(AttackMsg::DeauthAttack(deauth_attack)));
@@ -223,8 +232,13 @@ impl<B:Backend> Screen<B> for MainScreen{
             //channel number
             KeyCode::Char(d) if d.is_ascii_digit() && !self.toggle_deauth_popup => {
                 if self.panes.selected().as_str() == "configs"{
-                    self.out_msg = Some(IPCMessage::IOCommand(IOCommand::ChangeChannel(d.to_digit(10).unwrap() as u8)));    
-                    GlobalConfigs::get_instance().set_channel(&format!("{}",d));
+                    let channel: u8 = match d.to_digit(10) {
+                        Some(0) => 10,
+                        Some(d) => d as u8,
+                        None => 1,
+                    };
+                    self.out_msg = Some(IPCMessage::IOCommand(IOCommand::ChangeChannel(channel)));    
+                    GlobalConfigs::get_instance().set_channel(&format!("{}",channel));
                 }  
             },
             //toggle sweep
@@ -250,6 +264,7 @@ impl<B:Backend> Screen<B> for MainScreen{
                     }
                 }
             },
+
             _ => return false //pass the event outside to the TUI struct
         }
         true
@@ -264,9 +279,10 @@ impl<B:Backend> Screen<B> for MainScreen{
                 //TODO: make without unwrap and consider to remove attack_info from netinfo. maybe
                 //store is attacking only, or attack id
                 //find attacking network
-                let bssid = self.networks.get_mut().get_current_attack_bssid().unwrap();
-                let attack_info:&mut AttackInfo = self.attacks.get_mut().get_mut(&bssid).unwrap();
-                attack_info.update(progress.size_of_wordlist,progress.num_of_attempts,progress.passwords_attempts);
+                if let Some(bssid) = self.networks.get_mut().get_current_attack_bssid(){
+                    let attack_info:&mut AttackInfo = self.attacks.get_mut().get_mut(&bssid).unwrap();
+                    attack_info.update(progress.size_of_wordlist,progress.num_of_attempts,progress.passwords_attempts);
+                }
             },
             IPCMessage::Attack(AttackMsg::Password(password)) =>{
                 let bssid = self.networks.get_mut().get_current_attack_bssid().unwrap();
@@ -338,10 +354,14 @@ impl MainScreen{
             )
             .split(centered_area);
 
-        let device = "all devices".to_owned(); //TODO: check selected client
+        let device = match self.panes.selected().as_str(){
+            "clients" => self.networks.get_mut().get_selected_client().unwrap_or("all devices".to_owned()),
+            _=> "all devices".to_owned()
+        }; //TODO: check selected client
 
         let ssid: String = self.networks.get_mut().get_selected_network_info().unwrap().ssid.clone();
-        let channel = self.networks.get_mut().get_selected_network_info().unwrap().channel.unwrap();
+        let iface = GlobalConfigs::get_instance().get_iface();
+        let channel = wlan::get_iface_channel(&iface).unwrap();
 
         let text = Paragraph::new(
             vec![
@@ -538,11 +558,20 @@ impl MainScreen{
         }; 
 
         let epoch_now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        //get the channel of the selected client if there is one
+        //HERE
+        let channel:u8 = match self.networks.get_mut().get_selected_client(){
+            Some(client_mac) =>{
+                //extract client channel
+                network_info.clients.iter().find(|c|c.mac ==client_mac).unwrap().channel
+            },
+            None => network_info.channel.unwrap(),
+        };
         let stats_block = Paragraph::new(
             vec![
                 Spans::from(format!(" ssid: {}", network_info.ssid.clone())),
                 Spans::from(format!(" bssid: {}",encode(network_info.bssid))),
-                Spans::from(format!(" channel: {}",network_info.channel.unwrap())),
+                Spans::from(format!(" channel: {}",channel)),
                 Spans::from(format!(" signal: {}",aux::signal_icon(network_info.signal_strength.unwrap()))),
                 Spans::from(format!(" protocol: {}",network_info.protocol)),
                 Spans::from(format!(" handshake: {}",match network_info.handshake.is_some(){
@@ -597,8 +626,24 @@ struct Networks{
 }
 
 impl Networks{
-    
-    
+   
+    pub fn abort_current_attack(&mut self){
+        self.attacked_network = None;
+    }
+    pub fn is_currently_attacking(&self) -> bool {
+        match self.attacked_network{
+            Some(_) => true,
+            None => false,
+        }
+    }
+
+    pub fn get_selected_client(&self) -> Option<String>{
+        let selected_network = self.get_selected_network()?;
+        let clients = &self.clients_state[&selected_network];
+        clients.selected().cloned()
+    }
+
+
     pub fn get_selected_client_channel(&self) ->Option<u8>{
         let selected_network = self.get_selected_network().unwrap();
         let clients = &self.clients_state[&selected_network];

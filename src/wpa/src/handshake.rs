@@ -77,6 +77,7 @@ impl fmt::Display for Handshake{
 pub struct EapolMsg{
     pub bssid: String,
     pub client: String,
+    pub channel: u8,
     pub msg_nu: u16,
     pub msg: libwifi::frame::QosData,
     pub timestamp: u64,
@@ -99,6 +100,7 @@ impl TryFrom<libwifi::frame::QosData> for EapolMsg{
                     false => { hex::encode(value.dest().0) }},
             msg_nu: ((value.data[EAPOL_MSG_NUM_OFFSET] as u16) << 8) | value.data[EAPOL_MSG_NUM_OFFSET+1] as u16,
             msg: value,
+            channel: 0,
             timestamp: SystemTime::now().duration_since(UNIX_EPOCH)
                 .map_err(|_|ERROR_MSG)?.as_secs(),
         })

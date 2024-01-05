@@ -1,3 +1,6 @@
+/*
+*   The file contains the code for the Attack thread.
+*/
 use std::{
     io::{self, BufReader,BufRead, Read, Write},
     fs,
@@ -5,11 +8,11 @@ use std::{
     thread,
 };
 use crate::ipc::{IPC,IPCMessage,AttackMsg, AttackProgress};
-use aux::debug_log;
 use wpa::{Handshake,AttackInfo};
 
 
-const JOB_SIZE: usize = 36;
+const JOB_SIZE: usize = 36; //num of passwords per job
+
 type AttackSender = Sender<IPCMessage<AttackMsg>>;
 type AttackReciever = Receiver<IPCMessage<AttackMsg>>;
 
@@ -17,13 +20,18 @@ struct JobIPC{
     pub rx: Receiver<Job>,
     pub tx: Sender<Job>,
 }
+
+
 pub struct AttackThread{
     attack_info:AttackInfo,
     ipc_channels: IPC<AttackMsg>
 }
 
-
+/// readbuf_to_iter 
+/// ### Description
+/// creates a job sized iterator from the next bufffer lines
 fn readbuf_to_iter(buf: &mut dyn BufRead) -> impl Iterator<Item = String>{
+    
         buf.lines().take(JOB_SIZE).filter_map(|line|{
             match line{
                 Ok(password) => Some(password),
@@ -33,7 +41,6 @@ fn readbuf_to_iter(buf: &mut dyn BufRead) -> impl Iterator<Item = String>{
 }
 
 impl AttackThread{
-    
 
     fn send_job_to_worker<I>(&mut self, worker: &JobIPC,iterator:I)
         where I:Iterator<Item = String> {
@@ -61,9 +68,14 @@ impl AttackThread{
             ipc_channels:ipc,
         })
     }
+    
 
+    /// run
+    /// ### Description:
+    /// contains the loop logic of the Attack thread.
+    /// creates a thread pool of workers that are trying to check possible passwords. 
     pub fn run(&mut self) -> io::Result<()>{
-        //spawn threads
+        //spawn worker threads
         let mut threads: Vec<JobIPC> = vec![];
         for _ in 0..self.attack_info.num_of_threads{
             //create the ipc channels
@@ -113,12 +125,13 @@ impl AttackThread{
         }
 
         loop{
+            //read msg from main thread
             if let Ok(msg) = self.ipc_channels.rx.try_recv(){
                 if let IPCMessage::Attack(AttackMsg::Abort) = msg{
                     break;
                 }
             } 
-            //read msgs from threads
+            //read msgs from worker threads
             for thread in &threads{
                 if let Ok(job) = thread.rx.try_recv(){
                     match job{

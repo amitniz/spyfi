@@ -46,6 +46,7 @@ pub fn compare_arrays<const N:usize>(a: &[u8;N],b:&[u8;N]) -> bool{
     return true;
 }
 
+// converts signal strength into signal icon
 pub fn signal_icon(signal_strength: i8) -> String{
     let signals = ["󰤟","󰤢","󰤨"];
     if signal_strength > -50{
@@ -80,7 +81,7 @@ where
 
 impl<T, F> Iterator for Generator<T, F>
 where
-    F: FnMut(&T) -> T,T: Clone
+    F: FnMut(&T) -> T, T: Clone
 {
     type Item = T;
 

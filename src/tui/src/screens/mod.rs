@@ -81,8 +81,8 @@ impl<T> StatefulList<T>{
 
     pub fn selected(&self) -> Option<&T>{
         match self.state.selected(){
-            Some(i) => Some(&self.items[i]),
-            None => None,
+            Some(i) if self.items.len() !=0 => Some(&self.items[i]),
+            _ => None,
         }
     }
 

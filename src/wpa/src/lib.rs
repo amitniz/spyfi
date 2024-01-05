@@ -26,6 +26,7 @@ pub use handshake::Handshake;
 pub use network_info::{
     ParsedFrame,
     NetworkInfo,
+    Client,
     FrameType
 };
 
@@ -263,9 +264,11 @@ pub fn listen_and_collect(iface: &str, interval: std::time::Duration) -> Result<
                         }
                         network.channel = Some(current_channel);
                         network.signal_strength = Some(signal);
+                        network.clients.iter_mut().for_each(|e|{e.channel = current_channel});
                         networks.push(ParsedFrame::Network(network));
                     },
-                    ParsedFrame::Eapol(eapol)=>{
+                    ParsedFrame::Eapol(mut eapol)=>{
+                        eapol.channel = current_channel;
                         networks.push(ParsedFrame::Eapol(eapol)) 
                     },
                 }

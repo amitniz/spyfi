@@ -8,15 +8,15 @@ const MAX_THREADS: u8 = 150;
 //TODO
 #[derive(Debug,Clone)]
 pub struct AttackInfo{
-    pub hs: Handshake,
-    pub wordlist: String,
-    pub num_of_threads: u8,
-    pub previous_attempts: Vec<String>,
+    pub hs: Handshake, //handshake object
+    pub wordlist: String, //path to wordlist or generator
+    pub num_of_threads: u8, //number of workers
+    pub previous_attempts: Vec<String>, 
     pub size_of_wordlist: usize,
     pub num_of_attempts: usize,
     pub network_password: Option<String>,
     pub is_attacking: bool,
-    pub input_selection: InputSelection,
+    pub input_selection: InputSelection, //selected text field in tui
 }
 
 
@@ -51,6 +51,11 @@ impl AttackInfo{
 
     pub fn abort(&mut self){
         self.is_attacking = false;
+
+        //clear previous attack state
+        self.num_of_attempts = 0;
+        self.size_of_wordlist = 0;
+        self.previous_attempts = vec![];
     }
 
     pub fn get_num_of_threads(self) -> u8{

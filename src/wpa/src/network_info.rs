@@ -36,6 +36,7 @@ macro_rules! impl_try_from {
                 let channel: Option<u8> = None;
                 let signal_strength: Option<i8> = None;
 
+                
                 // determine if the client is the sender or the reciever
                 //Note: ignoring clients that are not from QoS data or data Frames.
                 //let client = match aux::compare_arrays(&bssid, &value.dest().0){
@@ -107,9 +108,13 @@ impl PartialEq for NetworkInfo{
 impl Eq for NetworkInfo{}
 
 impl NetworkInfo{
+    
+    /// update
+    /// ### Description:
+    /// updates the current networkinfo from a more recent capture of the network.
     pub fn update(&mut self,other: & NetworkInfo){
 
-        // update the channel to be the channel of the bssid handshakes
+        // update the channel of the station
         match &other.frame_type.as_ref().unwrap(){
             FrameType::Beacon | FrameType::AssociationRequest | FrameType::AssociationResponse => self.channel = other.channel,
             _=>{},
@@ -119,7 +124,7 @@ impl NetworkInfo{
         //remove duplications
         self.clients = self.clients.clone().into_iter()
             .sorted_by(|a,b|Ord::cmp(&a.mac,&b.mac))
-            .dedup_by(|x,y|x.mac ==y.mac).collect();
+            .dedup_by(|x,y|x.mac == y.mac).collect();
 
         self.last_appearance = other.last_appearance;
 
@@ -137,7 +142,6 @@ impl NetworkInfo{
     }
 
     //adds eapol msg and create hs instance if has all of the 4 messages
-    //EAT SPAGETTI
     pub fn add_eapol(&mut self, eapol: EapolMsg){
         //dont add if has HS already
         if self.handshake.is_some(){
@@ -231,17 +235,17 @@ impl TryFrom<libwifi::frame::QosNull> for NetworkInfo {
             false => { value.dest().0 }
         };
         
-         let clients: Vec<Client>;
-         // make sure client is not broadcast
-         if !aux::compare_arrays(&client,&[0xff,0xff,0xff,0xff,0xff,0xff]){
-             clients = vec![
-                 Client{
-                     mac:hex::encode(client),
-                     channel:0
-                 }];
-         }else{
-             clients = vec![];
-         }
+        let clients: Vec<Client>;
+        // make sure client is not broadcast
+        if !aux::compare_arrays(&client,&[0xff,0xff,0xff,0xff,0xff,0xff]){
+            clients = vec![
+                Client{
+                    mac:hex::encode(client),
+                    channel:0,
+                }];
+        }else{
+            clients = vec![];
+        }
         
         Ok(
             NetworkInfo{
