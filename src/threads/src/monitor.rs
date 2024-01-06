@@ -2,7 +2,7 @@ use crate::ipc::{IPCMessage,IPC,IOCommand,AttackMsg,DeauthAttack};
 use wpa::NetworkInfo;
 use std::sync::mpsc::{Sender,Receiver};
 use std::collections::HashMap;
-use core::time;
+use core::time::Duration;
 
 const MAX_CHANNEL: usize = 10;
 const DEAUTH_MSGS: usize = 16;
@@ -42,7 +42,7 @@ impl MonitorThread{
                 wlan::switch_iface_channel(&self.iface, self.channel);
             }
             //listen for new frames
-            match wpa::listen_and_collect(&self.iface, time::Duration::from_secs(1)){
+            match wpa::listen_and_collect(&self.iface, Duration::from_secs(1)){
                 Ok(captured_msgs) =>{
                     for msg in captured_msgs{
                         match msg{

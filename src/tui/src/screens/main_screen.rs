@@ -336,21 +336,21 @@ impl MainScreen{
         let popup_block = Block::default()
             .borders(Borders::ALL)
             .border_style(self.theme.border_style(false))
-            .style(self.theme.style().bg(Color::Gray)); 
+            .style(self.theme.popup_style()); 
 
 
         let centered_area = Rect{
             x: area.x+2,
             y: area.y + area.height/3,
             width: area.width-4,
-            height: area.height/4,
+            height: area.height/2,
         };
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Percentage(10),
-                Constraint::Percentage(85),
+                Constraint::Percentage(5),
+                Constraint::Percentage(100),
                 ]
             )
             .split(centered_area);
@@ -378,10 +378,7 @@ impl MainScreen{
             ]
         ).alignment(Alignment::Center)
         .style(
-                Style::default()
-                    .bg(Color::Gray)
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD)
+                self.theme.popup_style()
         );
 
         f.render_widget(Clear, area);
@@ -413,10 +410,10 @@ impl MainScreen{
     
         if self.toggle_deauth_popup{
             let centered_rect = Rect{
-                x: area.x+area.width/4,
-                y: area.y+area.height/4,
-                width: area.width/2,
-                height: area.height/2,
+                x: area.x+area.width/3,
+                y: area.y+area.height/3,
+                width: area.width/3,
+                height: area.height/3,
             };
             self.draw_deauth_popup(f, centered_rect)
         }
@@ -459,12 +456,8 @@ impl MainScreen{
                     .border_style(self.theme.border_style(self.panes.selected() == "networks"))
             )
             .style(self.theme.style())
-            .highlight_style(
-                Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .fg(self.theme.bright_text)
-                    .bg(self.theme.highlight)
-        );
+            .highlight_style( self.theme.highlight_style());
+
         f.render_stateful_widget(networks_block, area,&mut self.screen_selections.get_mut().get_networks_state());
     }
 
@@ -485,7 +478,7 @@ impl MainScreen{
             ).alignment(Alignment::Center)
             .style(
                     Style::default()
-                        .fg(Color::White)
+                        .fg(self.theme.text)
                         .add_modifier(Modifier::BOLD)
             );
             f.render_widget(text, new_area);
@@ -580,11 +573,7 @@ impl MainScreen{
                     .title(" Clients ")
             )
             .style(self.theme.style())
-            .highlight_style(
-                Style::default()
-                    .add_modifier(Modifier::BOLD)
-                    .fg(self.theme.bright_text)
-                    .bg(self.theme.highlight));
+            .highlight_style(self.theme.highlight_style());
         let bssid = self.screen_selections.get_mut().get_selected_network().unwrap();
         //render widgets
         f.render_widget(stats_block, chunks[0]);

@@ -1,17 +1,16 @@
-use tui::style::Color;
-use tui::style::Style;
+use tui::style::{Color,Style,Modifier};
+
 #[derive(Clone)]
 pub struct Theme{
-    pub name: String,
-    pub logo: Color,
-    pub accent: Color,
-    pub border_bg: Color,
-    pub border_fg: Color,
-    pub bg: Color,
-    pub text: Color,
-    pub bright_text: Color,
-    pub highlight: Color,
-    pub error: Color,
+    pub name: String, // Name of the theme
+    pub logo: Color, // Color of the logo
+    pub border_bg: Color, // Color of the border
+    pub highlight: Color, // Color of the border highlighted
+    pub border_fg: Color, // Color of the border text
+    pub bg: Color, // Color of the background
+    pub text: Color, // Color of the text
+    pub highlight_text: Color, // Color of the text highlighted
+    pub popup_bg: Color, // Color of that popup background
 }
 
 impl Default for Theme{
@@ -26,8 +25,19 @@ impl Theme{
         Style::default().fg(self.logo)
     }
 
+    pub fn highlight_style(&self) -> Style{
+        Style::default()
+            .add_modifier(Modifier::BOLD)
+            .fg(self.highlight_text)
+            .bg(self.highlight)
+    }
     pub fn style(&self) -> Style {
         Style::default().bg(self.bg).fg(self.text)
+    }
+
+    pub fn popup_style(&self) -> Style{
+        Style::default().bg(self.popup_bg)
+            .fg(self.highlight_text).add_modifier(Modifier::BOLD)
     }
 
     pub fn border_style(&self, highlight:bool) -> Style{
@@ -35,64 +45,53 @@ impl Theme{
             true => self.highlight,
             false => self.border_bg,
         };
-        Style::default().fg(self.border_fg).bg(bg)
+        let fg = match highlight{
+            true => self.highlight_text,
+            false => self.border_fg,
+        };
+        Style::default().fg(fg).bg(bg)
     }
     pub fn default() -> Self{
         Theme{
             name: "default".to_owned(),
             logo: Color::Rgb(0x9d,0x02,0x08),
             border_bg: Color::Black,
-            accent: Color::Rgb(0x9d,0x02,0x08),
             border_fg: Color::White,
             bg: Color::Black,
             text: Color::LightRed,
-            bright_text: Color::White,
+            highlight_text: Color::White,
             highlight: Color::Rgb(0x9d,0x02,0x08),
-            error: Color::Rgb(0x9d, 0x2, 0x8),
+            popup_bg: Color::LightRed,
         }
     }
-//     pub fn desert() -> Self{
-//         Theme{
-//             name: "desert".to_owned(),
-//             logo: Color::Rgb(80, 162, 167),
-//             border_bg: Color::Rgb(80, 162, 167),
-//             accent: Color::Rgb(155, 41, 21),
-//             border_fg: Color::Rgb(155, 41, 21),
-//             bg: Color::Rgb(233, 180, 76),
-//             text: Color::Rgb(228, 214, 167),
-//             bright_text: Color::Rgb(228, 214, 167),
-//             highlight: Color::Rgb(80, 162, 167),
-//             error: Color::Rgb(155, 41, 21),
-//         }
-//     }
-    pub fn eggplant() -> Self{
+
+
+    pub fn matrix() -> Self{
         Theme{
-            name: "eggplant".to_owned(),
+            name: "matrix".to_owned(),
             logo: Color::Rgb(127,178,133),
-            border_bg: Color::Rgb(127,178,133),
-            accent: Color::Rgb(127,178,133),
-            border_fg: Color::Rgb(127,178,133),
-            bg: Color::Rgb(208,214,181),
-            bright_text: Color::Rgb(210,210,210),
-            text: Color::Rgb(152,114,132),
-            highlight: Color::Rgb(152,114,132),
-            error: Color::Rgb(238,118,116),
+            border_bg: Color::Rgb(32,72,41),
+            border_fg: Color::Rgb(34,250,85),
+            bg: Color::Rgb(0x5,0x38,00),
+            highlight_text: Color::Rgb(0x8,0x58,1),
+            text: Color::Rgb(34,180,85),
+            highlight: Color::Rgb(0x10,0xa9,2),
+            popup_bg: Color::Rgb(32,72,41),
         }
     }
-//     
-//     pub fn forest() -> Self{
-//         Theme{
-//             name: "forest".to_owned(),
-//             logo: Color::Rgb(125, 205, 133),
-//             border_bg: Color::Rgb(125, 205, 133),
-//             accent: Color::Rgb(125, 205, 133),
-//             border_fg: Color::Rgb(125, 205, 133),
-//             bg: Color::Rgb(194, 225, 194),
-//             text: Color::Rgb(186, 235, 190),
-//             bright_text: Color::Rgb(119, 132, 114),
-//             highlight: Color::Rgb(128, 171, 130),
-//             error: Color::Rgb(238,118,116),
-//         }
-//     }
+
+    pub fn pastel() -> Self{
+        Theme{
+            name: "pastel".to_owned(),
+            logo: Color::Rgb(0xa3,0xbc,0xa5),
+            border_bg: Color::Rgb(0xb6,0x8e,0x5d),
+            border_fg: Color::Rgb(0xa3,0xbc,0xa5),
+            bg: Color::Rgb(0x6b,0x79,0x75),
+            highlight_text: Color::Rgb(0x43,0x04b,0x49),
+            text: Color::Rgb(0x4c,0x63,0x5c),
+            highlight: Color::Rgb(0xa3,0xbc,0xa5),
+            popup_bg: Color::Rgb(0xbb,0x62,0x5a),
+        }
+    }
 }
 

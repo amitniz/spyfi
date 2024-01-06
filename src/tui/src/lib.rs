@@ -32,7 +32,7 @@ use tui::{
 
 
 use screens::{Screen,colorscheme};
-use threads::{monitor::MonitorThread, AttackThread};
+use threads::{MonitorThread, AttackThread};
 use threads::ipc::{IPC,IPCMessage,AttackMsg};
 use wpa::{NetworkInfo, AttackInfo};
 
@@ -50,7 +50,7 @@ macro_rules! create_list {
                     .border_style(Style::default().fg($inst.theme.text).bg($inst.theme.border_bg))
             )
             .style(Style::default().bg($inst.theme.bg).fg($inst.theme.text))
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg($inst.theme.bright_text).bg($inst.theme.highlight))
+            .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg($inst.theme.highlight_text).bg($inst.theme.highlight))
     }
 }
 
@@ -243,11 +243,11 @@ impl Tui{
 
     fn randomize_theme(&mut self){
         let mut rng = rand::thread_rng();
-        let rand_int = rng.gen_range(1..3);
+        let rand_int = rng.gen_range(1..4);
         let theme;
         match rand_int{
-            1=>{theme = colorscheme::Theme::eggplant();}
-        //     2=>{theme = colorscheme::Theme::desert();}
+            1=>{theme = colorscheme::Theme::pastel();}
+            2=>{theme = colorscheme::Theme::matrix();}
             _=>{theme = colorscheme::Theme::default();}
         }
         //prevent from choosing the current theme

@@ -4,12 +4,12 @@
 //! from the WiFi.
 
 use std::collections::HashMap;
-use std::{sync::mpsc,thread};
+use std::{sync::mpsc,thread,cmp::min};
 use clap::{Parser, ValueEnum, Args, Subcommand};
 use wlan;
 use threads::{
-    ipc::{IPC,AttackMsg,IPCMessage},
-    AttackThread,
+    ipc::{IPC,AttackMsg,IPCMessage,IOCommand},
+    AttackThread, MonitorThread
 };
 use wpa::{self, NetworkInfo, ParsedFrame, AttackInfo};
 use crypto;
@@ -131,79 +131,66 @@ enum Mode {
 //TODO: help decriptions
 #[derive(Args, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Enumerate{
-    /// listen for nearby stations or clients
-    #[arg(short,long,group="enumerate")]
-    listen: ListenMode,
-
-    #[arg(short,long,id="BPF Filter",group="enumerate",requires="outputfile")]
-    capture: Option<String>,
 
     /// name of the wlan interface
     #[arg(short, long)]
     iface: String,
     
-    #[arg(short,long, required_if_eq("listen","clients"))]
-    ssid: Option<String>,
-
     ///timeout in seconds
     #[arg(short, long,default_value_t=60)]
     timeout: u32,
 
     ///dump results into an outputfile
-    #[arg(short,long,requires="enumerate")]
+    #[arg(short,long)]
     outputfile: Option<String>,
 
     ///use channel sweeping
-    #[arg(long,requires="enumerate")]
+    #[arg(short,long)]
     sweep:bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-enum ListenMode {
-    Stations,
-    Clients,
-}
 
 impl Enumerate{
     fn parse(&self){
-        //if let Some(bpf_filter) = self.capture.as_ref(){
-        //    todo!("not implemented");
-        //}
 
-        match self.listen{
-            ListenMode::Stations =>{
-                let iface = self.iface.as_ref();
-                let interval = std::time::Duration::from_millis(INTERVAL);
-                let timeout = std::time::Duration::from_secs(self.timeout as u64);
-                let init_time = std::time::Instant::now();
-                let mut channel: u8 = 1;
-                let mut networks:HashMap<String,NetworkInfo> = HashMap::new();
-                while init_time.elapsed() <= timeout {
-                    if self.sweep{
-                        wlan::switch_iface_channel(iface, channel);
-                        channel = aux::modulos((channel+1) as i32,(MAX_CHANNEL+1) as i32) as u8;
-                    }
-                    let stations = wpa::listen_and_collect(iface,interval);
-                    match stations {
-                        Ok(stations) =>{
-                            for mut station in stations{
-                                if let ParsedFrame::Network(mut station) = station{
-                                    networks.entry(station.ssid.clone())
-                                        .and_modify(|e|  e.update(&mut station))
-                                        .or_insert(station);
-                                }
-                            }
-                        },
-                        Err(e) =>{
-                            todo!("handle errors");
-                        }
-                    }
-                    networks_pretty_print(&networks);
+        let init_time = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(self.timeout as u64);
+
+        let iface = self.iface.clone();
+        let mut channel: u8 = wlan::get_iface_channel(&iface).unwrap();
+        let mut networks:HashMap<String,NetworkInfo> = HashMap::new();
+       
+        println!("\n[+] Listening on: {iface}");
+        if self.sweep{
+            println!("[+] Sweep mode: ON");
+        }else{
+            println!("[+] Channel: {channel}");
+        }
+       
+        //spawn monitor thread
+        let (thread_tx,main_rx) = mpsc::channel(); 
+        let (main_tx,thread_rx) = mpsc::channel(); 
+        thread::spawn(move ||{
+            MonitorThread::init(&iface,thread_rx,thread_tx).run();
+        });
+        if self.sweep{
+            main_tx.send(IPCMessage::IOCommand(IOCommand::Sweep));
+        }
+
+        while init_time.elapsed() <= timeout {
+            //read discovered networks from the Monitor thread
+            if let Ok(msg) = main_rx.try_recv(){
+                if let IPCMessage::Message(net_info) = msg{
+                    networks = net_info;
                 }
-            },
-            ListenMode::Clients =>{
-                unimplemented!();
             }
+            networks_pretty_print(&networks);
+        }
+    
+        //kill the Monitor thread
+        main_tx.send(IPCMessage::EndCommunication); 
+        if self.outputfile.is_some(){
+            todo!("print to file");
         }
 
     }
@@ -218,24 +205,21 @@ struct Attack{
     attack: AttackType,
 
     ///interface
-    #[arg(long,short,group="source")]
+    #[arg(long,short,group="source",
+        required_if_eq("ATTACKTYPE","dos"),
+    )]
     iface: Option<String>,
    
     ///capture file
-    #[arg(short,long,group="source")]
+    #[arg(short,long,group="source",
+        required_if_eq("ATTACKTYPE","dict"),
+    )]
     capture: Option<String>,
 
     ///number of threads to use for dictionary/bruteforce attack
     #[arg(short,long,default_value_t=1,value_parser = clap::value_parser!(u32).range(1..201))]
     threads:u32,
 
-    ///regex pattern for bruteforce
-    //#[arg(long)]
-    //pattern:Option<String>,
-
-    ///send deauths to achieve handshake faster (NOISY)
-    #[arg(long,required_if_eq("ATTACKTYPE","bruteforce"))]
-    aggresive:bool,
 
     ///target MAC for DoS attack [default: broadcast]
     #[arg(long)]
@@ -246,7 +230,6 @@ struct Attack{
         short, 
         long,
         required_if_eq("ATTACKTYPE","dict"),
-        required_if_eq("ATTACKTYPE","bruteforce"),
         requires = "source"
     )]
     ssid: Option<String>,
@@ -265,12 +248,10 @@ struct Attack{
 
     ///wordlist
     //TODO: require wordlist or phones
-    #[arg(long,group="dict")]
+    #[arg(long,group="dict",
+    required_if_eq("ATTACKTYPE","dict"),
+    )]
     wordlist: Option<String>,
-    
-    ///phonenumbers generator
-    #[arg(long,group="dict")]
-    phones: bool,
 }
 
 
@@ -280,8 +261,6 @@ enum AttackType{
     Dict, 
     /// Deauth attack
     Dos,
-    /// Bruteforce attack
-    Bruteforce,
 }
 
 impl Attack{
@@ -343,38 +322,37 @@ impl Attack{
                     };
                     
                     let attack_info;
-                    if self.phones{
-                        todo!();
-                    }else{ //wordlist
-                        let wordlist = self.wordlist.as_ref().unwrap();
-                        attack_info = AttackInfo::new(hs,wordlist, self.threads as u8);
-                        thread::spawn(move||{AttackThread::init(thread_ipc,attack_info).unwrap().run()});
-                    }
+                    let wordlist = self.wordlist.as_ref().unwrap();
+                    attack_info = AttackInfo::new(hs,wordlist, self.threads as u8);
+                    thread::spawn(move||{AttackThread::init(thread_ipc,attack_info).unwrap().run()});
 
+                    println!("\x1b[?25l"); //hide cursor
+                    let mut lines_count = 1;
                     loop{
+                        print!("\x1b[{}A",lines_count);//move up the cursor
+                        lines_count = 1;
                         match main_ipc.rx.recv().unwrap(){
                             IPCMessage::Attack(AttackMsg::Progress(progress)) =>{
-
-                                println!("\x1b[25l");
                                 println!("[*] progress: {}/{}",progress.num_of_attempts,progress.size_of_wordlist);
-                                for i in 0..10{
+                                for i in 0..min(progress.passwords_attempts.len()-1,10){
                                     println!("{:-100}",progress.passwords_attempts[i]);
+                                    lines_count +=1;
                                 }
-                                print!("\x1b[{}A",12);
                             },
                             IPCMessage::Attack(AttackMsg::Password(password)) =>{
                                 println!("found password: {}",password);
+                                print!("\x1b[?25h"); //restore cursor
+                                main_ipc.tx.send(IPCMessage::Attack(AttackMsg::Abort));
                                 return;
                             },
                             _=>{break;}
                         }
                     }
-                    println!("[!] Exhausted.")
+                    main_ipc.tx.send(IPCMessage::Attack(AttackMsg::Abort));
+                    println!("{:-100}","[!] Exhausted.");
+                    print!("\x1b[?25h"); //restore cursor
                 }
 
-
-            },
-            AttackType::Bruteforce =>{
 
             },
         } 
@@ -398,7 +376,7 @@ pub fn run() {
             a.parse();
         },
         _ =>{
-            println!("Not implemented yet");
+            println!("invalid");
         }
         
     }
@@ -407,9 +385,13 @@ pub fn run() {
 // ----------------------------------- Aux ------------------------------------
 
 
+fn write_networks_to_file(path:&str,networks:&HashMap<String,NetworkInfo>){
+    todo!();
+}
+
 fn networks_pretty_print(networks:&HashMap<String,NetworkInfo>){
     //hide cursor
-    println!("\x1b[25l");
+    println!("\x1b[?25l");
     println!(" {:-^68} "," Networks ");
     println!("|     SSID     | CHANNEL |       BSSID      | SIGNAL |    CLIENTS    |");
     let mut lines_num = 4; //tracks how many lines were print
@@ -436,4 +418,5 @@ fn networks_pretty_print(networks:&HashMap<String,NetworkInfo>){
     println!(" --------------------------------------------------------------------");
     //move up the cursor
     print!("\x1b[{}A",lines_num);
+    print!("\x1b[?25h"); //restore the cursor
 }
