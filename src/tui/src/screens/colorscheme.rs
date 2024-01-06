@@ -1,5 +1,5 @@
 use tui::style::Color;
-
+use tui::style::Style;
 #[derive(Clone)]
 pub struct Theme{
     pub name: String,
@@ -11,7 +11,6 @@ pub struct Theme{
     pub text: Color,
     pub bright_text: Color,
     pub highlight: Color,
-    pub highlight_pane: Color,
     pub error: Color,
 }
 
@@ -22,7 +21,22 @@ impl Default for Theme{
 }
 
 impl Theme{
+   
+    pub fn logo_style(&self) -> Style {
+        Style::default().fg(self.logo)
+    }
 
+    pub fn style(&self) -> Style {
+        Style::default().bg(self.bg).fg(self.text)
+    }
+
+    pub fn border_style(&self, highlight:bool) -> Style{
+        let bg = match highlight{
+            true => self.highlight,
+            false => self.border_bg,
+        };
+        Style::default().fg(self.border_fg).bg(bg)
+    }
     pub fn default() -> Self{
         Theme{
             name: "default".to_owned(),
@@ -34,11 +48,9 @@ impl Theme{
             text: Color::LightRed,
             bright_text: Color::White,
             highlight: Color::Rgb(0x9d,0x02,0x08),
-            highlight_pane: Color::Rgb(0x9d,0x2,0x8),
             error: Color::Rgb(0x9d, 0x2, 0x8),
         }
     }
-}
 //     pub fn desert() -> Self{
 //         Theme{
 //             name: "desert".to_owned(),
@@ -53,20 +65,20 @@ impl Theme{
 //             error: Color::Rgb(155, 41, 21),
 //         }
 //     }
-//     pub fn eggplant() -> Self{
-//         Theme{
-//             name: "eggplant".to_owned(),
-//             logo: Color::Rgb(127,178,133),
-//             border_bg: Color::Rgb(127,178,133),
-//             accent: Color::Rgb(127,178,133),
-//             border_fg: Color::Rgb(127,178,133),
-//             bg: Color::Rgb(208,214,181),
-//             bright_text: Color::Rgb(210,210,210),
-//             text: Color::Rgb(152,114,132),
-//             highlight: Color::Rgb(152,114,132),
-//             error: Color::Rgb(238,118,116),
-//         }
-//     }
+    pub fn eggplant() -> Self{
+        Theme{
+            name: "eggplant".to_owned(),
+            logo: Color::Rgb(127,178,133),
+            border_bg: Color::Rgb(127,178,133),
+            accent: Color::Rgb(127,178,133),
+            border_fg: Color::Rgb(127,178,133),
+            bg: Color::Rgb(208,214,181),
+            bright_text: Color::Rgb(210,210,210),
+            text: Color::Rgb(152,114,132),
+            highlight: Color::Rgb(152,114,132),
+            error: Color::Rgb(238,118,116),
+        }
+    }
 //     
 //     pub fn forest() -> Self{
 //         Theme{
@@ -82,5 +94,5 @@ impl Theme{
 //             error: Color::Rgb(238,118,116),
 //         }
 //     }
-// }
+}
 

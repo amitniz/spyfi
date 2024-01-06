@@ -1,5 +1,5 @@
+use std::time::{Instant,Duration};
 use std::thread::Thread;
-
 use crate::Handshake;
 
 const MAX_THREADS: u8 = 150;
@@ -16,6 +16,9 @@ pub struct AttackInfo{
     pub num_of_attempts: usize,
     pub network_password: Option<String>,
     pub is_attacking: bool,
+    pub initial_attack_time: Instant,
+    pub final_time: Instant,
+    pub exhausted: bool,
     pub input_selection: InputSelection, //selected text field in tui
 }
 
@@ -32,6 +35,9 @@ impl AttackInfo{
             previous_attempts: vec![],
             network_password: None,
             is_attacking: false,
+            initial_attack_time: Instant::now(),
+            final_time: Instant::now(),
+            exhausted: false,
             input_selection: InputSelection::Wordlist,
         }
     }
@@ -47,15 +53,45 @@ impl AttackInfo{
 
     pub fn attack(&mut self){
         self.is_attacking = true;
+        //reset timers
+        self.initial_attack_time = Instant::now();
+        self.final_time = self.initial_attack_time.clone();
+        //reset found password
+        self.network_password = None;
+        
+        self.exhausted = false;
+    }
+
+    pub fn elapsed_time(&self) -> String{
+        let elapsed_time;
+        if self.initial_attack_time == self.final_time{ //only true if the attack is still on
+            let current_time = Instant::now();
+            elapsed_time = current_time - self.initial_attack_time;
+        }else{
+            elapsed_time = self.final_time - self.initial_attack_time;
+        }
+    
+        let seconds = elapsed_time.as_secs();
+        let hours = seconds / 3600;
+        let minutes = (seconds % 3600) / 60;
+        let seconds = seconds % 60;
+
+        if hours > 0{
+            format!("{:02}h {:02}m {:02}s", hours, minutes, seconds)
+        }else if minutes > 0 {
+            format!("{:02}m {:02}s", minutes, seconds)
+        }else{
+            format!("{:02}s", seconds)
+        }
     }
 
     pub fn abort(&mut self){
         self.is_attacking = false;
-
         //clear previous attack state
         self.num_of_attempts = 0;
         self.size_of_wordlist = 0;
         self.previous_attempts = vec![];
+        
     }
 
     pub fn get_num_of_threads(self) -> u8{
@@ -75,6 +111,8 @@ impl AttackInfo{
     
     pub fn set_password(&mut self,password:&str){
         self.network_password = Some(password.to_owned());
+        //set the final time
+        self.final_time = Instant::now();
     }
 
     pub fn cracked(&self) -> Option<String>{
@@ -88,6 +126,14 @@ impl AttackInfo{
         }
     }
 
+    pub fn exhausted(&mut self) {
+        self.final_time = Instant::now();
+        self.exhausted = true;
+    }
+
+    pub fn is_exhausted(&self) -> bool{
+        self.exhausted
+    }
     pub fn is_attacking(&self) -> bool{
         self.is_attacking
     }

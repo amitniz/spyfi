@@ -15,7 +15,6 @@ use threads::ipc::{IOCommand,AttackMsg,DeauthAttack};
 type AttacksDict = Cell<HashMap<String,AttackInfo>>;
 type BSSID = String;
 
-
 pub struct MainScreen{
     // show config pane
     toggle_configs: bool,
@@ -24,7 +23,7 @@ pub struct MainScreen{
     // screen panes
     panes: Panes,
     // captured networks info and states
-    networks: Cell<Networks>,
+    screen_selections: Cell<ScreenSelections>,
     // current attacks
     attacks: AttacksDict,
     // current theme
@@ -37,7 +36,7 @@ impl Default for MainScreen{
 
     fn default() -> Self {
         MainScreen{
-            networks: Cell::new(Networks::default()),
+            screen_selections: Cell::new(ScreenSelections::default()),
             theme: GlobalConfigs::get_instance().theme
                 .read()
                 .unwrap()
@@ -104,39 +103,39 @@ impl<B:Backend> Screen<B> for MainScreen{
     // handles keyboard events
     fn handle_input(&mut self,key:KeyEvent) -> bool{
         match key.code {
-            KeyCode::Enter if self.panes.selected() == "attack" && !self.networks.get_mut().is_currently_attacking() =>{
-                let bssid = self.networks.get_mut().get_selected_network().unwrap();
+            KeyCode::Enter if self.panes.selected() == "attack" && !self.screen_selections.get_mut().is_currently_attacking() =>{
+                let bssid = self.screen_selections.get_mut().get_selected_network().unwrap();
                 let mut attack: &mut AttackInfo = self.attacks.get_mut().get_mut(&bssid).unwrap();
                 if attack.wordlist.len() == 0 { return true} //make sure wordlist string is not empty
                 attack.attack(); //set the attack status to active
-                self.networks.get_mut().attack(&bssid);
+                self.screen_selections.get_mut().attack(&bssid);
                 self.out_msg = Some(IPCMessage::Attack(AttackMsg::DictionaryAttack(attack.clone())));
             },
 
 
-            KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc if self.networks.get_mut().is_currently_attacking() =>{
-                let bssid = self.networks.get_mut().get_selected_network().unwrap();
+            KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc if self.screen_selections.get_mut().is_currently_attacking() =>{
+                let bssid = self.screen_selections.get_mut().get_selected_network().unwrap();
                 let mut attack: &mut AttackInfo = self.attacks.get_mut().get_mut(&bssid).unwrap();
                 attack.abort(); //set the attack status to inactive
-                self.networks.get_mut().abort_current_attack();
+                self.screen_selections.get_mut().abort_current_attack();
                 self.out_msg = Some(IPCMessage::Attack(AttackMsg::Abort));
             },
 
             KeyCode::Right | KeyCode::Left if self.panes.selected() =="attack" =>{
-                let bssid: BSSID = self.networks.get_mut().get_selected_network().unwrap();
+                let bssid: BSSID = self.screen_selections.get_mut().get_selected_network().unwrap();
                 let attack_info = self.attacks.get_mut().get_mut(&bssid).unwrap();
                 attack_info.change_selection();
             },
 
-            KeyCode::Char(c) if self.panes.selected() == "attack" && !self.networks.get_mut().is_currently_attacking()=>{
-                let bssid: BSSID = self.networks.get_mut().get_selected_network().unwrap();
+            KeyCode::Char(c) if self.panes.selected() == "attack" && !self.screen_selections.get_mut().is_currently_attacking()=>{
+                let bssid: BSSID = self.screen_selections.get_mut().get_selected_network().unwrap();
                 let attack_info = self.attacks.get_mut().get_mut(&bssid).unwrap();
                 if attack_info.get_input_selection() == "wordlist"{
                     let mut wordlist = &mut self.attacks.get_mut().get_mut(&bssid).unwrap().wordlist;
                     wordlist.push(c);
                 }
 
-                else if c.is_digit(10) && attack_info.get_input_selection() == "threads" && !self.networks.get_mut().is_currently_attacking(){
+                else if c.is_digit(10) && attack_info.get_input_selection() == "threads" && !self.screen_selections.get_mut().is_currently_attacking(){
                     //add digit to current num of threads
                     let mut num_of_threads: usize = attack_info.num_of_threads as usize;
                     num_of_threads = num_of_threads*10 + c.to_digit(10).unwrap() as usize;
@@ -149,8 +148,8 @@ impl<B:Backend> Screen<B> for MainScreen{
             }
 
 
-            KeyCode::Backspace if self.panes.selected() == "attack" && !self.networks.get_mut().is_currently_attacking()=>{
-                let bssid = self.networks.get_mut().get_selected_network().unwrap();
+            KeyCode::Backspace if self.panes.selected() == "attack" && !self.screen_selections.get_mut().is_currently_attacking()=>{
+                let bssid = self.screen_selections.get_mut().get_selected_network().unwrap();
                 let attack_info = self.attacks.get_mut().get_mut(&bssid).unwrap();
                 if attack_info.get_input_selection() == "wordlist"{
                     let mut wordlist = &mut self.attacks.get_mut().get_mut(&bssid).unwrap().wordlist;
@@ -168,12 +167,12 @@ impl<B:Backend> Screen<B> for MainScreen{
             KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('K') if !self.toggle_deauth_popup => {
                 match self.panes.selected().as_str(){
                     "networks" =>{
-                        self.networks.get_mut().select_previous_network(); //select previous networks
+                        self.screen_selections.get_mut().select_previous_network(); //select previous networks
                     },
                     "clients" =>{
-                        let bssid = self.networks.get_mut().get_selected_network().unwrap();
-                        if !self.networks.get_mut().has_clients(&bssid){
-                            self.networks.get_mut().select_previous_client(&bssid);
+                        let bssid = self.screen_selections.get_mut().get_selected_network().unwrap();
+                        if !self.screen_selections.get_mut().has_clients(&bssid){
+                            self.screen_selections.get_mut().select_previous_client(&bssid);
                         }
                     }
                     _ =>{},
@@ -182,12 +181,12 @@ impl<B:Backend> Screen<B> for MainScreen{
             KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('J') if !self.toggle_deauth_popup => {
                 match self.panes.selected().as_str(){
                     "networks" =>{
-                        self.networks.get_mut().select_next_network(); //select next networks
+                        self.screen_selections.get_mut().select_next_network(); //select next networks
                     },
                     "clients" => {
-                        let bssid = self.networks.get_mut().get_selected_network().unwrap();
-                        if !self.networks.get_mut().has_clients(&bssid){
-                            self.networks.get_mut().select_next_client(&bssid);
+                        let bssid = self.screen_selections.get_mut().get_selected_network().unwrap();
+                        if !self.screen_selections.get_mut().has_clients(&bssid){
+                            self.screen_selections.get_mut().select_next_client(&bssid);
                         }
                     }
                 _ =>{},
@@ -197,21 +196,24 @@ impl<B:Backend> Screen<B> for MainScreen{
             KeyCode::Char('c') |KeyCode::Char('C') if !self.toggle_deauth_popup => {
                 self.toggle_configs = !self.toggle_configs;
             },
-            //open deauth popup
 
-            KeyCode::Char('d') | KeyCode::Char('D') if self.panes.selected() != "attack" =>{
-                self.toggle_deauth_popup = true;
+            //open deauth popup
+            KeyCode::Char('d') | KeyCode::Char('D') | KeyCode::Enter if !self.toggle_deauth_popup && self.panes.selected() != "attack" =>{
+                //make sure that there are discovered networks
+                if !self.screen_selections.get_mut().networks_info.is_empty() {
+                    self.toggle_deauth_popup = true;
+                }
             }
 
             KeyCode::Enter if self.toggle_deauth_popup => {
                 //send deauth command to monitor thread
-                let bssid = self.networks.get_mut().get_selected_network().unwrap();
-                let station_channel = self.networks.get_mut().get_selected_network_info()
+                let bssid = self.screen_selections.get_mut().get_selected_network().unwrap();
+                let station_channel = self.screen_selections.get_mut().get_selected_network_info()
                                                                 .unwrap().channel.unwrap();
 
 
                 let client: Option<String> = match self.panes.selected().as_str(){
-                    "clients" => self.networks.get_mut().get_selected_client(),
+                    "clients" => self.screen_selections.get_mut().get_selected_client(),
                     _ => None
                 };
 
@@ -258,7 +260,7 @@ impl<B:Backend> Screen<B> for MainScreen{
                 self.panes.next();
                 //don't allow attack pane with no attack info
                 if self.panes.selected() == "attack"{
-                    let bssid = self.networks.get_mut().get_selected_network().unwrap();
+                    let bssid = self.screen_selections.get_mut().get_selected_network().unwrap();
                     if !self.attacks.get_mut().contains_key(&bssid){
                         self.panes.next();
                     }
@@ -273,24 +275,28 @@ impl<B:Backend> Screen<B> for MainScreen{
     fn update(&mut self,ipc_msg: ScreenIPC) -> Option<ScreenIPC>{
         match ipc_msg{
             IPCMessage::Message(netinfo) => {
-                self.networks.get_mut().update_networks(netinfo);
+                self.screen_selections.get_mut().update_networks(netinfo);
             },
             IPCMessage::Attack(AttackMsg::Progress(progress)) =>{
                 //TODO: make without unwrap and consider to remove attack_info from netinfo. maybe
                 //store is attacking only, or attack id
                 //find attacking network
-                if let Some(bssid) = self.networks.get_mut().get_current_attack_bssid(){
+                if let Some(bssid) = self.screen_selections.get_mut().get_current_attack_bssid(){
                     let attack_info:&mut AttackInfo = self.attacks.get_mut().get_mut(&bssid).unwrap();
                     attack_info.update(progress.size_of_wordlist,progress.num_of_attempts,progress.passwords_attempts);
                 }
             },
             IPCMessage::Attack(AttackMsg::Password(password)) =>{
-                let bssid = self.networks.get_mut().get_current_attack_bssid().unwrap();
+                let bssid = self.screen_selections.get_mut().get_current_attack_bssid().unwrap();
                 let attack_info:&mut AttackInfo = self.attacks.get_mut().get_mut(&bssid).unwrap();
                 attack_info.set_password(&password);
+                self.out_msg = Some(IPCMessage::Attack(AttackMsg::Abort)); //kill the AttackThread
             },
             IPCMessage::Attack(AttackMsg::Exhausted) =>{
-                todo!();
+                let bssid = self.screen_selections.get_mut().get_current_attack_bssid().unwrap();
+                let attack_info:&mut AttackInfo = self.attacks.get_mut().get_mut(&bssid).unwrap();
+                attack_info.exhausted();
+                self.out_msg = Some(IPCMessage::Attack(AttackMsg::Abort)); //kill the AttackThread
             },
             IPCMessage::Attack(AttackMsg::Error) =>{
                 todo!();
@@ -308,11 +314,6 @@ impl<B:Backend> Screen<B> for MainScreen{
 impl MainScreen{
 
     fn create_configs_block<B>(&mut self,f:&mut Frame<B>, area: Rect) where B:Backend{
-        let bg = match self.panes.selected().as_str(){
-            "configs" => {self.theme.highlight},
-            _ => {self.theme.border_bg},
-        }; 
-        //*
         let configs_block = Paragraph::new(
             vec![
                 Spans::from(format!(" interface: {}",GlobalConfigs::get_instance().get_iface())),
@@ -324,9 +325,9 @@ impl MainScreen{
             Block::default()
                 .title(" Configurations ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(self.theme.border_fg).bg(bg))
+                .border_style(self.theme.border_style(self.panes.selected()=="configs"))
         )
-        .style(Style::default().bg(self.theme.bg).fg(self.theme.text));
+        .style(self.theme.style());
         f.render_widget(configs_block, area);
     }
 
@@ -334,8 +335,8 @@ impl MainScreen{
     fn draw_deauth_popup<B>(&mut self, f: &mut Frame<B>,area: Rect) where B:Backend {
         let popup_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(self.theme.border_fg).bg(self.theme.border_bg))
-            .style(Style::default().bg(Color::Gray).fg(self.theme.text)); //TODO: fix theme
+            .border_style(self.theme.border_style(false))
+            .style(self.theme.style().bg(Color::Gray)); 
 
 
         let centered_area = Rect{
@@ -355,11 +356,11 @@ impl MainScreen{
             .split(centered_area);
 
         let device = match self.panes.selected().as_str(){
-            "clients" => self.networks.get_mut().get_selected_client().unwrap_or("all devices".to_owned()),
+            "clients" => self.screen_selections.get_mut().get_selected_client().unwrap_or("all devices".to_owned()),
             _=> "all devices".to_owned()
         }; //TODO: check selected client
 
-        let ssid: String = self.networks.get_mut().get_selected_network_info().unwrap().ssid.clone();
+        let ssid: String = self.screen_selections.get_mut().get_selected_network_info().unwrap().ssid.clone();
         let iface = GlobalConfigs::get_instance().get_iface();
         let channel = wlan::get_iface_channel(&iface).unwrap();
 
@@ -404,8 +405,8 @@ impl MainScreen{
         self.draw_attack_pane(f,chunks[2]);
         
         //update networks info pane and attack pane
-        if !self.networks.get_mut().is_empty(){
-            let mut netinfo = self.networks.get_mut().get_selected_network_info().unwrap().clone();
+        if !self.screen_selections.get_mut().is_empty(){
+            let mut netinfo = self.screen_selections.get_mut().get_selected_network_info().unwrap().clone();
             self.update_network_info_pane(f,chunks[1],&netinfo);
             self.update_attack_pane(f,chunks[2],&netinfo);
         }
@@ -430,56 +431,41 @@ impl MainScreen{
         let network_info_block = Block::default().
             borders(Borders::ALL)
             .title(" Network Info ")
-            .border_style(Style::default()
-                .fg(self.theme.border_fg).bg(self.theme.border_bg)
-            )
-            .style(Style::default().bg(self.theme.bg).fg(self.theme.text));
+            .border_style(self.theme.border_style(false))
+            .style(self.theme.style());
         f.render_widget(network_info_block, area);
     }
 
     fn draw_attack_pane<B>(&mut self, f: &mut Frame<B>,area: Rect) where B:Backend{
 
-        let attack_bg = match self.panes.selected().as_str(){
-            "attack" => {self.theme.highlight},
-            _ => {self.theme.bg},
-        }; 
-
         let attack_block = Block::default().
             borders(Borders::ALL)
             .title(" Attack ")
-            .border_style(Style::default()
-                .fg(self.theme.border_fg).bg(attack_bg)
-            )
-            .style(Style::default().bg(self.theme.bg).fg(self.theme.text));
+            .border_style(self.theme.border_style(self.panes.selected() == "attack"))
+            .style(self.theme.style());
 
         f.render_widget(attack_block, area);
     }
 
     fn draw_networks_pane<B>(&mut self, f: &mut Frame<B>,area: Rect) where B:Backend {
     
-        //highlight the border for current pane
-        let networks_bg = match self.panes.selected().as_str(){
-            "networks" => {self.theme.highlight},
-            _ => {self.theme.bg},
-        }; 
-
-        let networks_block = List::new(self.networks.get_mut().networks_info.iter()
+        let networks_block = List::new(self.screen_selections.get_mut().networks_info.iter()
             .map(|(_,v)|{ListItem::new(format!(" {} ",v.ssid))})
             .collect::<Vec<ListItem>>())
             .block(
                 Block::default()
                     .title(" Networks ")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(self.theme.border_fg).bg(networks_bg))
+                    .border_style(self.theme.border_style(self.panes.selected() == "networks"))
             )
-            .style(Style::default().bg(self.theme.bg).fg(self.theme.text))
+            .style(self.theme.style())
             .highlight_style(
                 Style::default()
                     .add_modifier(Modifier::BOLD)
                     .fg(self.theme.bright_text)
                     .bg(self.theme.highlight)
         );
-        f.render_stateful_widget(networks_block, area,&mut self.networks.get_mut().get_networks_state());
+        f.render_stateful_widget(networks_block, area,&mut self.screen_selections.get_mut().get_networks_state());
     }
 
     fn update_attack_pane<B>(&mut self, f:&mut Frame<B>, area: Rect, network_info: &NetworkInfo) where B:Backend{
@@ -552,15 +538,10 @@ impl MainScreen{
             .constraints([Constraint::Percentage(25),Constraint::Percentage(75)])
             .split(area);
 
-        let clients_bg = match self.panes.selected().as_str(){
-            "clients" => {self.theme.highlight},
-            _ => {self.theme.bg},
-        }; 
-
         let epoch_now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         //get the channel of the selected client if there is one
         //HERE
-        let channel:u8 = match self.networks.get_mut().get_selected_client(){
+        let channel:u8 = match self.screen_selections.get_mut().get_selected_client(){
             Some(client_mac) =>{
                 //extract client channel
                 network_info.clients.iter().find(|c|c.mac ==client_mac).unwrap().channel
@@ -587,7 +568,7 @@ impl MainScreen{
                     .title(format!(" Network Info "))
                     
             )
-            .style(Style::default().bg(self.theme.bg).fg(self.theme.text));
+            .style(self.theme.style());
            
         let clients_block = List::new(
                 network_info.clients.iter().map(|s|ListItem::new(format!(" {} ",s.mac))).collect::<Vec<ListItem>>()
@@ -595,19 +576,19 @@ impl MainScreen{
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(self.theme.border_fg).bg(clients_bg))
+                    .border_style(self.theme.border_style(self.panes.selected() == "clients"))
                     .title(" Clients ")
             )
-            .style(Style::default().bg(self.theme.bg).fg(self.theme.text))
+            .style(self.theme.style())
             .highlight_style(
                 Style::default()
                     .add_modifier(Modifier::BOLD)
                     .fg(self.theme.bright_text)
                     .bg(self.theme.highlight));
-        let bssid = self.networks.get_mut().get_selected_network().unwrap();
+        let bssid = self.screen_selections.get_mut().get_selected_network().unwrap();
         //render widgets
         f.render_widget(stats_block, chunks[0]);
-        f.render_stateful_widget(clients_block, chunks[1],self.networks.get_mut().get_clients_state(&bssid));
+        f.render_stateful_widget(clients_block, chunks[1],self.screen_selections.get_mut().get_clients_state(&bssid));
         
     }
 }
@@ -618,14 +599,14 @@ impl MainScreen{
 //current network, client, wordlist/thread
 //Note only clients must be stateful
 #[derive(Debug,Clone,Default)]
-struct Networks{
+struct ScreenSelections{
     pub networks_info: HashMap<BSSID,NetworkInfo>,
     networks_state: StatefulList<BSSID>,
     clients_state: HashMap<BSSID, StatefulList<String>>,
     attacked_network: Option<String>,
 }
 
-impl Networks{
+impl ScreenSelections{
    
     pub fn abort_current_attack(&mut self){
         self.attacked_network = None;
@@ -688,16 +669,26 @@ impl Networks{
     pub fn select_previous_client(&mut self,bssid: &str){
         self.clients_state.get_mut(bssid).unwrap().next(); 
     }
+    /// update_networks
+    /// ### Description:
+    /// replace the previous captured networks state with a recent, updated state 
+    /// provided by the Monitor thread
     pub fn update_networks(&mut self, networks: HashMap<BSSID, NetworkInfo>){
-        self.networks_info = networks;
-        let selected_network = self.networks_state.selected().cloned();
+        self.networks_info = networks; //replace the old net_info with the new one
+
+        //store the current selected network if there is one
+        let selected_network = self.get_selected_network();
+        //recreate StatefullList of networks
         self.networks_state.items = self.networks_info.keys().cloned().collect();
         //restore selected
-        if let Some(bssid) = selected_network{
-            let idx = self.networks_state.items.iter().position(|b|b==&bssid);
+        if let Some(bssid) = &selected_network{
+            let idx = self.networks_state.items.iter().position(|b|b == bssid);
             self.networks_state.state.select(idx);
         }
-        //create StatefulList of clients for each network
+    
+        let selected_client = self.get_selected_client();
+        
+        //recreate StatefulList of clients for each network
         self.clients_state = self.networks_info.iter().map(|(k,v)|{
             (k.clone(),
                 StatefulList::new(
@@ -706,7 +697,14 @@ impl Networks{
             )
         }
         ).collect();
-        
+       
+        //restore selected client
+        if let Some(bssid) = selected_client{
+            let selected_network = selected_network.unwrap();
+            let idx = self.clients_state.get(&selected_network).unwrap().items.iter().position(|b|b==&bssid);
+            self.get_clients_state(&selected_network).select(idx);
+        }
+        // set a network selection if there is none
         if self.networks_state.selected().is_none() && !self.is_empty(){
             self.networks_state.next();
         }
@@ -785,7 +783,7 @@ fn draw_attack_status<B>(f: &mut Frame<B>,area: Rect, attack_info: &mut AttackIn
         // split the area
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3),Constraint::Length(1),Constraint::Length(1),Constraint::Percentage(40)])
+            .constraints([Constraint::Length(3),Constraint::Length(2),Constraint::Length(1),Constraint::Percentage(50),Constraint::Percentage(10)])
             .split(area);
         // progress gauge
         let progress_gauge =Gauge::default() .block(Block::default().borders(Borders::ALL).title("Progress"))
@@ -798,18 +796,29 @@ fn draw_attack_status<B>(f: &mut Frame<B>,area: Rect, attack_info: &mut AttackIn
             0 => format!(" Loading wordlist.."),
             _ => format!( " Progress: {}/{}",attack_info.num_of_attempts,attack_info.size_of_wordlist)
         };
+
+        //elapsed time
+        let elapsed_time = format!(" Elapsed time: {}",attack_info.elapsed_time());
         let progress_block = Paragraph::new(
             vec![
                 Spans::from(progress_msg),
+                Spans::from(elapsed_time),
             ]
         ).block(Block::default());
         f.render_widget(progress_block, chunks[1]);
 
         if attack_info.previous_attempts.len() > 0{
             //current attempt block
+            
             let current_attempt_msg = match attack_info.cracked(){
                 Some(password) => format!(" Found: {password}"),
-                None => format!(" Trying: {}",&attack_info.previous_attempts[0])
+                None => {
+                    if attack_info.is_exhausted(){
+                        format!(" Password not found..")
+                    }else{
+                        format!(" Trying: {}",&attack_info.previous_attempts[0])
+                    }
+                }
             };
 
             let current_attempt = Paragraph::new(
@@ -819,12 +828,16 @@ fn draw_attack_status<B>(f: &mut Frame<B>,area: Rect, attack_info: &mut AttackIn
             ).block(Block::default());
             f.render_widget(current_attempt, chunks[2]);
 
-            let previous_attempts = Paragraph::new(
-                    attack_info.previous_attempts[1..].iter().map(|i|Spans::from(format!("         {}",i.clone()))).collect::<Vec<Spans>>()
-            ).block(Block::default()).style(Style::default().fg(Color::Rgb(0x6e, 0x4e,0x4e )));
-            f.render_widget(previous_attempts, chunks[3]);
-            if attack_info.cracked().is_none(){
-                attack_info.previous_attempts.remove(0);
+            if !attack_info.is_exhausted(){
+
+                let previous_attempts = Paragraph::new(
+                        attack_info.previous_attempts[1..].iter().map(|i|Spans::from(format!("         {}",i.clone()))).collect::<Vec<Spans>>()
+                ).block(Block::default()).style(Style::default().fg(Color::Rgb(0x6e, 0x4e,0x4e )));
+                f.render_widget(previous_attempts, chunks[3]);
+                //remove last attempt from list
+                if attack_info.cracked().is_none(){
+                    attack_info.previous_attempts.remove(0);
+                }
             }
         }
        

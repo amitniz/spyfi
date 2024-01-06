@@ -105,7 +105,7 @@ impl WelcomeScreen{
         let logo = Paragraph::new(welcome_text)
             .block(Block::default())
             .alignment(tui::layout::Alignment::Center)
-            .style(Style::default().fg(self.theme.logo));
+            .style(self.theme.logo_style());
 
         f.render_widget(logo,area);
     }
@@ -118,6 +118,6 @@ impl WelcomeScreen{
             .wrap(Wrap{trim:false})
             .block(Block::default())
             .alignment(tui::layout::Alignment::Center)
-            .style(Style::default().fg(self.theme.logo))
+            .style(self.theme.logo_style())
     }
 }

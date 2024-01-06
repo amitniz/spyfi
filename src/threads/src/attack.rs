@@ -11,7 +11,7 @@ use crate::ipc::{IPC,IPCMessage,AttackMsg, AttackProgress};
 use wpa::{Handshake,AttackInfo};
 
 
-const JOB_SIZE: usize = 36; //num of passwords per job
+const JOB_SIZE: usize = 37; //num of passwords per job
 
 type AttackSender = Sender<IPCMessage<AttackMsg>>;
 type AttackReciever = Receiver<IPCMessage<AttackMsg>>;
@@ -77,6 +77,7 @@ impl AttackThread{
     pub fn run(&mut self) -> io::Result<()>{
         //spawn worker threads
         let mut threads: Vec<JobIPC> = vec![];
+        let mut live_threads = self.attack_info.num_of_threads;
         for _ in 0..self.attack_info.num_of_threads{
             //create the ipc channels
             let (thread_tx,main_rx) = channel();
@@ -113,14 +114,20 @@ impl AttackThread{
             reader = Some(BufReader::new(f));
         }
 
-
+        //send first jobs
         for thread in &threads{
             if generator_mode{
-                let iterator = phones.as_mut().unwrap().by_ref().take(JOB_SIZE);
-                self.send_job_to_worker(thread,iterator);
-            }else{
-                let iterator = readbuf_to_iter(reader.as_mut().unwrap().by_ref());
-                self.send_job_to_worker(thread,iterator);
+                let mut iterator = phones.as_mut().unwrap().by_ref().take(JOB_SIZE).peekable();
+                if iterator.peek().is_none(){ //incase no more jobs left
+                    thread.tx.send(Job::Done);
+                    live_threads -=1;
+                }else{ self.send_job_to_worker(thread,iterator); }
+            }else{ //wordlist
+                let mut iterator = readbuf_to_iter(reader.as_mut().unwrap().by_ref()).peekable();
+                if iterator.peek().is_none(){ //incase no more jobs left
+                    thread.tx.send(Job::Done);
+                    live_threads -=1;
+                }else{ self.send_job_to_worker(thread,iterator); }
             }
         }
 
@@ -131,28 +138,41 @@ impl AttackThread{
                     break;
                 }
             } 
+
             //read msgs from worker threads
             for thread in &threads{
                 if let Ok(job) = thread.rx.try_recv(){
                     match job{
                         Job::Found(password) => {
                             self.ipc_channels.tx.send(IPCMessage::Attack(AttackMsg::Password(password)));
-                           //TODO: break didn't allow the main thread to read it before it closed. close thread by message from the thread
+                            //when main thread will read the message it will send abort. 
                         },
                         Job::Done =>{
+                            //TODO: find a way to make the iterator type the same for wordlist and
+                            //generators to avoid this code duplication
                             if generator_mode{
-                                let iterator = phones.as_mut().unwrap().by_ref().take(JOB_SIZE);//readbuf_to_iter(reader.by_ref());
-                                self.send_job_to_worker(thread,iterator);
+                                let mut iterator = phones.as_mut().unwrap().by_ref().take(JOB_SIZE).peekable();
+                                if iterator.peek().is_none(){ //incase no more jobs left
+                                    thread.tx.send(Job::Done);
+                                    live_threads -=1;
+                                }else{ self.send_job_to_worker(thread,iterator); }
                             }else{
-                                let iterator = readbuf_to_iter(reader.as_mut().unwrap().by_ref());
-                                self.send_job_to_worker(thread,iterator);
+                                let mut iterator = readbuf_to_iter(reader.as_mut().unwrap().by_ref()).peekable();
+                                if iterator.peek().is_none(){ //incase no more jobs left
+                                    thread.tx.send(Job::Done);
+                                    live_threads -=1;
+                                }else{ self.send_job_to_worker(thread,iterator); }
                             }
                         },
                         _ => {},
                     }
                 }
             }
-            
+            // check if there are still workers with job
+            if live_threads <=0 {
+                self.ipc_channels.tx.send(IPCMessage::Attack(AttackMsg::Exhausted));
+                //when main thread will read the message it will send abort. 
+            }
         }
 
         for thread in &threads{
