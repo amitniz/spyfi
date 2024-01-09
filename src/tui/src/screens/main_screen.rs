@@ -748,8 +748,8 @@ fn draw_attack_info<B>(f: &mut Frame<B>,area: Rect, attack_info: &AttackInfo, th
         ]
     ).block(Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(wordlist_border).bg(Color::Black))
-        .title(format!(" Wordlist "))).style(Style::default().bg(Color::DarkGray).fg(Color::White));
+        .border_style(Style::default().fg(wordlist_border).bg(theme.bg))
+        .title(format!(" Wordlist "))).style(Style::default().bg(theme.bg).fg(theme.text));
 
     f.render_widget(wordlist_block, chunks[0]);
     
@@ -760,8 +760,8 @@ fn draw_attack_info<B>(f: &mut Frame<B>,area: Rect, attack_info: &AttackInfo, th
         ]
     ).block(Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(threads_border).bg(Color::Black))
-        .title(format!(" Threads "))).style(Style::default().bg(Color::DarkGray).fg(Color::White));
+        .border_style(Style::default().fg(threads_border).bg(theme.bg))
+        .title(format!(" Threads "))).style(Style::default().bg(theme.bg).fg(theme.text));
 
     f.render_widget(wordlist_block, chunks[1]);
 }
@@ -775,8 +775,8 @@ fn draw_attack_status<B>(f: &mut Frame<B>,area: Rect, attack_info: &mut AttackIn
             .constraints([Constraint::Length(3),Constraint::Length(2),Constraint::Length(1),Constraint::Percentage(50),Constraint::Percentage(10)])
             .split(area);
         // progress gauge
-        let progress_gauge =Gauge::default() .block(Block::default().borders(Borders::ALL).title("Progress"))
-        .gauge_style(Style::default().fg(Color::White).bg(Color::Black).add_modifier(Modifier::ITALIC))
+        let progress_gauge =Gauge::default() .block(Block::default().borders(Borders::ALL).title(" Progress "))
+        .gauge_style(Style::default().fg(Color::White).bg(theme.bg).add_modifier(Modifier::ITALIC))
         .percent(attack_info.progress().min(100));
         f.render_widget(progress_gauge, chunks[0]);
 

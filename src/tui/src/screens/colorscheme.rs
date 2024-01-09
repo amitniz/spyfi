@@ -70,27 +70,27 @@ impl Theme{
         Theme{
             name: "matrix".to_owned(),
             logo: Color::Rgb(127,178,133),
-            border_bg: Color::Rgb(32,72,41),
-            border_fg: Color::Rgb(34,250,85),
-            bg: Color::Rgb(0x5,0x38,00),
-            highlight_text: Color::Rgb(0x8,0x58,1),
-            text: Color::Rgb(34,180,85),
-            highlight: Color::Rgb(0x10,0xa9,2),
-            popup_bg: Color::Rgb(32,72,41),
+            border_bg: Color::Black,
+            border_fg: Color::White,
+            bg: Color::Black,
+            text: Color::LightGreen,
+            highlight_text: Color::White,
+            highlight: Color::Green,
+            popup_bg: Color::LightGreen,
         }
     }
 
-    pub fn pastel() -> Self{
+    pub fn sunny() -> Self{
         Theme{
-            name: "pastel".to_owned(),
-            logo: Color::Rgb(0xa3,0xbc,0xa5),
-            border_bg: Color::Rgb(0xb6,0x8e,0x5d),
-            border_fg: Color::Rgb(0xa3,0xbc,0xa5),
-            bg: Color::Rgb(0x6b,0x79,0x75),
-            highlight_text: Color::Rgb(0x43,0x04b,0x49),
-            text: Color::Rgb(0x4c,0x63,0x5c),
-            highlight: Color::Rgb(0xa3,0xbc,0xa5),
-            popup_bg: Color::Rgb(0xbb,0x62,0x5a),
+            name: "sunny".to_owned(),
+            logo: Color::Yellow,
+            border_bg: Color::Black,
+            border_fg: Color::White,
+            bg: Color::Black,
+            text: Color::LightYellow,
+            highlight_text: Color::White,
+            highlight: Color::Yellow,
+            popup_bg: Color::LightYellow,
         }
     }
 }

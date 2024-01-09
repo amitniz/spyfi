@@ -4,6 +4,7 @@
 //! from the WiFi.
 
 use std::collections::HashMap;
+use std::{io::Write,fs::File};
 use std::{sync::mpsc,thread,cmp::min};
 use clap::{Parser, ValueEnum, Args, Subcommand};
 use wlan;
@@ -35,7 +36,7 @@ struct Cli {
 enum Commands{
     Utility(Utility), 
     Enum(Enumerate), 
-    Attack(Attack), 
+    Attack(Attack),
 
 }
 
@@ -186,11 +187,12 @@ impl Enumerate{
             }
             networks_pretty_print(&networks);
         }
-    
         //kill the Monitor thread
         main_tx.send(IPCMessage::EndCommunication); 
-        if self.outputfile.is_some(){
-            todo!("print to file");
+        if let Some(path ) = &self.outputfile{
+            if let Err(_) = write_networks_to_file(&path,&networks){
+                println!("[-] failed to write into: {path}");
+            }
         }
 
     }
@@ -295,15 +297,17 @@ impl Attack{
                     let pcap = pcap::Capture::from_file(path);
                     let ssid = self.ssid.as_ref().unwrap();
                     let bssid = self.bssid.as_ref().unwrap();
-                    
                     //read HS from capture file
                     let hs;
                     match pcap{
                         Ok(cap) =>{
+                            println!("[*] Loading pcap: {}",path.display());
                             hs = wpa::get_hs_from_file(cap, ssid, bssid).unwrap();
+                            println!("[*] Looking for Handshake..");
+                            println!("[+] Found Handshake");
                         },
                         _ =>{
-                            println!("failed to open pcap:{}",self.capture.as_ref().unwrap());
+                            println!("[-] Failed to read pcap: {}",self.capture.as_ref().unwrap());
                             return;
                         } 
                     }        
@@ -333,14 +337,14 @@ impl Attack{
                         lines_count = 1;
                         match main_ipc.rx.recv().unwrap(){
                             IPCMessage::Attack(AttackMsg::Progress(progress)) =>{
-                                println!("[*] progress: {}/{}",progress.num_of_attempts,progress.size_of_wordlist);
+                                println!("[*] Progress: {}/{}",progress.num_of_attempts,progress.size_of_wordlist);
                                 for i in 0..min(progress.passwords_attempts.len()-1,10){
-                                    println!("{:-100}",progress.passwords_attempts[i]);
+                                    println!("    {:-100}",progress.passwords_attempts[i]);
                                     lines_count +=1;
                                 }
                             },
                             IPCMessage::Attack(AttackMsg::Password(password)) =>{
-                                println!("found password: {}",password);
+                                println!("[+] Found password: {}",password);
                                 print!("\x1b[?25h"); //restore cursor
                                 main_ipc.tx.send(IPCMessage::Attack(AttackMsg::Abort));
                                 return;
@@ -385,8 +389,34 @@ pub fn run() {
 // ----------------------------------- Aux ------------------------------------
 
 
-fn write_networks_to_file(path:&str,networks:&HashMap<String,NetworkInfo>){
-    todo!();
+fn write_networks_to_file(path:&str,networks:&HashMap<String,NetworkInfo>) -> std::io::Result<()>{
+    let mut file = File::create(path)?;
+    
+    file.write_all(format!(" {:-^68}\n"," Networks ").as_bytes())?;
+    file.write_all(format!("|     SSID     | CHANNEL |       BSSID      | SIGNAL |    CLIENTS    |\n").as_bytes())?;
+    let mut lines_num = 4; //tracks how many lines were print
+    for (_,station) in networks{
+        file.write_all(format!(" --------------------------------------------------------------------\n").as_bytes())?;
+        file.write_all(format!("|{:^14}|{:^9}|{:^18}|{:^8}|",
+            station.ssid, 
+            station.channel.unwrap_or(0),
+            hex::encode(station.bssid),
+            format!("{} dBm",station.signal_strength.unwrap_or(0)),
+        ).as_bytes())?;
+        lines_num += 2;
+
+        if !station.clients.is_empty(){
+            file.write_all(format!("{:^15}|\n",station.clients[0].mac).as_bytes())?;
+            for client in &station.clients[1..]{
+                file.write_all(format!("{:>67}  |\n",client.mac).as_bytes())?;
+            }
+            lines_num += station.clients.len()-1;
+        }else{
+            file.write_all(format!("               |\n").as_bytes())?;
+        }
+    }
+    file.write_all(format!(" --------------------------------------------------------------------\n").as_bytes())?;
+    Ok(())
 }
 
 fn networks_pretty_print(networks:&HashMap<String,NetworkInfo>){
@@ -420,3 +450,5 @@ fn networks_pretty_print(networks:&HashMap<String,NetworkInfo>){
     print!("\x1b[{}A",lines_num);
     print!("\x1b[?25h"); //restore the cursor
 }
+
+

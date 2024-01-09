@@ -246,7 +246,7 @@ impl Tui{
         let rand_int = rng.gen_range(1..4);
         let theme;
         match rand_int{
-            1=>{theme = colorscheme::Theme::pastel();}
+            1=>{theme = colorscheme::Theme::sunny();}
             2=>{theme = colorscheme::Theme::matrix();}
             _=>{theme = colorscheme::Theme::default();}
         }

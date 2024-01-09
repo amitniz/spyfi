@@ -59,6 +59,7 @@ pub fn get_hs_from_file(mut pcap: pcap::Capture<pcap::Offline>,ssid: &str, bssid
                 continue;
             } //timeout TODO: timeout check could be checked here
         }
+
         let frame_offset = frame[FRAME_HEADER_LENGTH] as usize;
         //parse the 802.11 frame
         let parsed_frame = libwifi::parse_frame(&frame[frame_offset..]);
