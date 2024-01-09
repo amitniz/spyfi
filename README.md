@@ -1,23 +1,44 @@
-# SpyFi :satellite: - An opensource WiFi exploitation tool written in rust.
-
-
-
-## Operation Modes
-Spyfi has two operation modes:
-- CLI
-- TUI
-
-
-***TUI mode would launch when no arguments are given.***
-
-
-### **TUI**
-The TUI mode provides an intuitive, informative UI
-from which you can monitor and attack nearby networks.
+<h1 align="center">
+  SpyFi :satellite:
+  <br>
+</h1>
+<h4 align="center">An Opensource Wifi Exploitation Tool written in rust :crab: </h4>
 
 ![tui demonstration](media/tui_demonstration.gif)
 
-### **CLI**
+## Key Features 
+- portable and light weight all in one tool.
+- easy to use terminal UI mode.
+- fast and powerful.
+
+## How to use
+Spyfi has two modes of operation:
+- TUI mode.
+- CLI mode.
+
+***TUI mode launches when no arguments are given.*** 
+
+### **TUI:**
+
+The TUI mode provides an intuitive, informative UI
+from which you can monitor and attack nearby networks.
+
+#### **TUI Keymaps**
+| Action                 | Key(s)                                       |
+|------------------------|----------------------------------------------|
+| Configuration Panel    | `c`                                          |
+| Switching Pane         | `TAB`                                        |
+| Send Deauth            | `ENTER` or `d`                               |
+| Move Up                | `Up Arrow Key` or `k`                        |
+| Move Down              | `Down Arrow Key` or `j`                      |
+| Quit/Stop Attack       | `q` or `ESC`                                 |
+| Change Channel         | `1` to `9` (when Configuration Panel enabled)|
+| Sweep Mode             | `s` (when Configuration Panel enabled)       |
+| random theme           | `p`                                          |
+
+
+
+### **CLI:**
 
 ```
 Usage: spyfi <COMMAND>
