@@ -1,0 +1,18 @@
+[workspace]
+members = ["src/tui","src/wlan", "src/aux","src/cli","src/wpa","src/crypto","src/threads"]
+
+[package]
+name = "spyfi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pnet_datalink ="0.33.0"
+libwifi = "0.3"
+hmac = "0.12.1"
+wlan = {path="src/wlan"}
+aux = {path="src/aux"}
+cli = {path = "src/cli"}
+tui = {path = "src/tui"}
+crypto = {path = "src/crypto"}
+threads = {path = "src/threads"}

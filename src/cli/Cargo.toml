@@ -1,0 +1,16 @@
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = { version = "4.1.13", features = ["derive"] }
+wlan = {path = "../wlan"}
+aux = {path = "../aux"}
+threads = {path = "../threads"}
+wpa = {path = "../wpa"}
+crypto = {path = "../crypto"}
+hex = "0.4.3"
+pcap = "1.0.0"
