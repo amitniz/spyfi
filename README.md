@@ -1,19 +1,23 @@
-# SpyFi
-An opensource WiFi exploitation tool written in rust.
-
-### Operation Modes
-Spyfi has two operation modes, CLI and TUI.
-
-* TUI mode would launch when no arguments are given.
+# SpyFi :satellite: - An opensource WiFi exploitation tool written in rust.
 
 
-#### TUI
-The TUI mode provides a an intuitive, informative UI
+
+## Operation Modes
+Spyfi has two operation modes:
+- CLI
+- TUI
+
+
+***TUI mode would launch when no arguments are given.***
+
+
+### **TUI**
+The TUI mode provides an intuitive, informative UI
 from which you can monitor and attack nearby networks.
 
-![[media/tui_demonstration.gif]]
+![tui demonstration](media/tui_demonstration.gif)
 
-#### CLI
+### **CLI**
 
 ```
 Usage: spyfi <COMMAND>
@@ -29,7 +33,7 @@ Options:
   -V, --version  Print version
 ```
 
-##### utility 
+#### utility mode
 
 commands: 
 - switch between managed/monitor mode.
@@ -52,7 +56,7 @@ Options:
   -h, --help               Print help (see more with '--help')
 ```
 
-##### enum
+#### enum mode
 
 captures information about nearby networks
 
@@ -67,7 +71,7 @@ Options:
   -h, --help                     Print help
 ```
 
-##### attack
+#### attack mode
 
 performs dictionary attack on a network from a given pcap
 file
