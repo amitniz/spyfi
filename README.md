@@ -4,7 +4,7 @@
 </h1>
 <h4 align="center">An Opensource Wifi Exploitation Tool written in rust :crab: </h4>
 
-![tui demonstration](media/tui_demonstration.gif)
+![tui demonstration](.github/media/tui_demonstration.gif)
 
 ## Key Features 
 - portable and light weight all in one tool.
