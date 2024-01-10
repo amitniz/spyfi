@@ -7,7 +7,7 @@
 ![tui demonstration](.github/media/tui_demonstration.gif)
 
 ## Key Features 
-- portable and light weight all in one tool.
+- portable and light weight all-in-one tool.
 - easy to use terminal UI mode.
 - fast and powerful.
 
@@ -112,3 +112,6 @@ Options:
       --wordlist <WORDLIST>  wordlist
   -h, --help                 Print help (see more with '--help')
 ```
+
+### Dependencies
+- libpcap-dev
